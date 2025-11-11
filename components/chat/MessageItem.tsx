@@ -8,20 +8,33 @@ import rehypeHighlight from 'rehype-highlight'
 
 interface MessageItemProps {
   message: Message
+  selectedColors?: number[][]
 }
 
-export function MessageItem({ message }: MessageItemProps) {
+export function MessageItem({ message, selectedColors }: MessageItemProps) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
+
+  // Get border color from selectedColors (use first color if available)
+  const getBorderColor = () => {
+    if (!selectedColors || selectedColors.length === 0) {
+      return undefined
+    }
+    const [r, g, b] = selectedColors[0]
+    return `rgb(${r}, ${g}, ${b})`
+  }
+
+  const borderColor = getBorderColor()
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
         className={`max-w-3xl rounded-lg px-4 py-3 ${
           isUser
-            ? 'bg-secondary text-white'
-            : 'bg-white border border-border text-text-primary'
+            ? 'bg-yellow-400/20 border-2 border-yellow-400 text-black dark:bg-yellow-400/20 dark:border-yellow-400 dark:text-white'
+            : 'bg-white text-black dark:bg-black dark:text-white border-2'
         }`}
+        style={!isUser && borderColor ? { borderColor } : undefined}
       >
         <div className="prose prose-sm max-w-none">
           {isAssistant ? (
@@ -38,7 +51,7 @@ export function MessageItem({ message }: MessageItemProps) {
                       </code>
                     </pre>
                   ) : (
-                    <code className="bg-gray-100 px-1 py-0.5 rounded text-sm" {...props}>
+                    <code className="bg-gray-100 px-1 py-0.5 rounded text-sm dark:bg-gray-800" {...props}>
                       {children}
                     </code>
                   )
@@ -51,11 +64,7 @@ export function MessageItem({ message }: MessageItemProps) {
             <p className="whitespace-pre-wrap">{message.content}</p>
           )}
         </div>
-        <div
-          className={`text-xs mt-2 ${
-            isUser ? 'text-white/70' : 'text-text-secondary'
-          }`}
-        >
+        <div className="text-xs mt-2 text-black/70 dark:text-white/70">
           {formatTime(message.created_at)}
         </div>
       </div>

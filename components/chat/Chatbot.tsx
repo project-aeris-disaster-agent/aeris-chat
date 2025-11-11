@@ -16,7 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 
-import { ColorPicker, AnimationSettings } from "@/components/ui/color-picker";
+import { ColorSlider, AnimationSettings } from "@/components/ui/color-slider";
 
 import AERISLogo from "@/assets/AERIS LOGO.svg";
 
@@ -244,7 +244,7 @@ export function Chatbot() {
 
       {/* Theme Toggle & Color Picker - Top Right */}
       <div className="absolute top-2 right-2 md:top-4 md:right-4 z-30 flex gap-2">
-        <ColorPicker
+        <ColorSlider
           selectedColors={selectedColors}
           onColorChange={setSelectedColors}
           animationSettings={animationSettings}
@@ -393,7 +393,7 @@ export function Chatbot() {
 
                   <div className="space-y-2 overflow-hidden p-2">
                     {messages.length > 0 ? (
-                      <MessageList messages={messages} isLoading={messagesLoading} />
+                      <MessageList messages={messages} isLoading={messagesLoading} selectedColors={selectedColors} />
                     ) : messagesLoading ? (
                       <div className="flex items-center justify-center py-4">
                         <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent"></div>
