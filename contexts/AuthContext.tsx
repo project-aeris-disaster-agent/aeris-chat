@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { User } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import type { User as AppUser } from '@/types/user'
+import { AUTH_DISABLED } from '@/lib/config'
 
 interface AuthContextType {
   user: User | null
@@ -22,6 +23,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient()
 
   useEffect(() => {
+    if (AUTH_DISABLED) {
+      // Skip auth checks when auth is disabled
+      setLoading(false)
+      return
+    }
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
@@ -30,6 +37,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setLoading(false)
       }
+    }).catch((error) => {
+      console.error('Error getting session:', error)
+      setLoading(false)
     })
 
     // Listen for auth changes
@@ -60,6 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAppUser(data as AppUser)
     } catch (error) {
       console.error('Error fetching app user:', error)
+      // Don't throw - this is non-critical
     } finally {
       setLoading(false)
     }

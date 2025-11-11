@@ -25,6 +25,13 @@ import { SOSButton } from "@/components/chat/SOSButton";
 import { GradientButton } from "@/components/ui/gradient-button";
 
 import { EmergencyHotlinesModal } from "@/components/chat/EmergencyHotlinesModal";
+<<<<<<< Updated upstream
+=======
+import { DonationWalletModal } from "@/components/chat/DonationWalletModal";
+import { MessageList } from "@/components/chat/MessageList";
+import { useChat } from "@/hooks/useChat";
+import { useSessions } from "@/hooks/useSessions";
+>>>>>>> Stashed changes
 
 export function Chatbot() {
 
@@ -50,6 +57,40 @@ export function Chatbot() {
   });
 
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const [messageInput, setMessageInput] = React.useState("");
+  const [currentSessionId, setCurrentSessionId] = React.useState<string | null>(null);
+  const [isSending, setIsSending] = React.useState(false);
+
+  // Chat hooks
+  const { sessions, createSession, isLoading: sessionsLoading } = useSessions();
+  const { messages, sendMessage, isLoading: messagesLoading } = useChat(currentSessionId);
+
+  // Auto-scroll to bottom when messages change
+  React.useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Initialize session on mount
+  React.useEffect(() => {
+    if (!sessionsLoading && sessions.length === 0 && !currentSessionId) {
+      handleNewSession();
+    } else if (sessions.length > 0 && !currentSessionId) {
+      setCurrentSessionId(sessions[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions.length, sessionsLoading]);
+
+  const handleNewSession = async () => {
+    try {
+      const newSession = await createSession();
+      if (newSession) {
+        setCurrentSessionId(newSession.id);
+      }
+    } catch (error) {
+      console.error('Error creating session:', error);
+    }
+  };
 
   // Handle SOS call to 911
   const handleSOSCall = () => {
@@ -57,6 +98,55 @@ export function Chatbot() {
     const phoneLink = document.createElement('a');
     phoneLink.href = 'tel:911';
     phoneLink.click();
+  };
+
+  // Handle form submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log('Form submitted, messageInput:', messageInput);
+    
+    if (!messageInput.trim() || isSending || messagesLoading) {
+      console.log('Submission blocked:', { 
+        hasMessage: !!messageInput.trim(), 
+        isSending, 
+        messagesLoading 
+      });
+      return;
+    }
+
+    const messageToSend = messageInput.trim();
+    setMessageInput("");
+    setIsSending(true);
+
+    try {
+      console.log('Creating/getting session...');
+      let sessionId = currentSessionId;
+      if (!sessionId) {
+        // Create session if none exists
+        console.log('No session, creating new one...');
+        const newSession = await createSession();
+        console.log('New session created:', newSession);
+        if (newSession) {
+          sessionId = newSession.id;
+          setCurrentSessionId(sessionId);
+        } else {
+          throw new Error('Failed to create session');
+        }
+      }
+      
+      if (sessionId) {
+        console.log('Sending message to session:', sessionId);
+        await sendMessage(messageToSend, sessionId);
+        console.log('Message sent successfully');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      // Restore message on error
+      setMessageInput(messageToSend);
+      alert(`Error: ${error instanceof Error ? error.message : 'Failed to send message'}`);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   // Generate opacity array from min/max settings
@@ -304,9 +394,14 @@ export function Chatbot() {
                 <div className="pt-2 md:pt-4">
 
                   <div className="space-y-2 overflow-hidden p-2">
-
-                    {/* Messages will appear here */}
-
+                    {messages.length > 0 ? (
+                      <MessageList messages={messages} isLoading={messagesLoading} />
+                    ) : messagesLoading ? (
+                      <div className="flex items-center justify-center py-4">
+                        <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent"></div>
+                      </div>
+                    ) : null}
+                    <div ref={messagesEndRef} />
                   </div>
 
                 </div>
@@ -355,7 +450,7 @@ export function Chatbot() {
 
             <div className="relative mt-2 mb-4 md:mb-0 w-full px-2 md:px-0" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
 
-              <form>
+              <form onSubmit={handleSubmit}>
 
                 <div className="relative">
 
@@ -365,15 +460,27 @@ export function Chatbot() {
 
                     placeholder="Ask something with AI"
 
+                    value={messageInput}
+
+                    onChange={(e) => setMessageInput(e.target.value)}
+
+                    disabled={isSending || messagesLoading}
+
                   />
 
                   <Button
+
+                    type="button"
 
                     variant="ghost"
 
                     size="icon"
 
                     className="absolute left-1 top-1/2 -translate-y-1/2 h-7 w-7 md:h-8 md:w-8 rounded-sm"
+
+                    onClick={handleNewSession}
+
+                    disabled={isSending || messagesLoading}
 
                   >
 
@@ -393,9 +500,15 @@ export function Chatbot() {
 
                     className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 md:h-8 md:w-8 rounded-sm"
 
+                    disabled={!messageInput.trim() || isSending || messagesLoading}
+
                   >
 
-                    <Send className="h-4 w-4" />
+                    {isSending ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent"></div>
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
 
                   </Button>
 

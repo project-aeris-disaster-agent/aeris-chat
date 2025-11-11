@@ -417,9 +417,11 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-# Backend LLM API
-NEXT_PUBLIC_LLM_API_URL=your_llm_api_url
+# Backend API (Flask)
+# For local development:
+NEXT_PUBLIC_BACKEND_API_URL=http://localhost:8000
 LLM_API_KEY=your_llm_api_key
+# For production (Railway): Set this in Vercel environment variables with your Railway backend URL and API key
 
 # App Configuration
 NEXT_PUBLIC_APP_URL=your_app_url

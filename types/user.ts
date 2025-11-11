@@ -21,7 +21,8 @@ export interface User {
 
 export interface ChatSession {
   id: string
-  user_id: string
+  user_id: string | null // Nullable for anonymous sessions
+  anonymous_id: string | null // Browser session ID for anonymous users
   ip_address: string | null
   title: string | null
   created_at: string
