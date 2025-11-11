@@ -5,8 +5,6 @@ import { X, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
-import qrDark from "@/assets/qrDonoUwan-dark.png";
-import qrLight from "@/assets/qrDonoUwan-light.png";
 
 interface DonationWalletModalProps {
   isOpen: boolean;
@@ -15,12 +13,19 @@ interface DonationWalletModalProps {
 
 const WALLET_ADDRESS = "0xf4526c10dfdeaf7c4b8942793373cb0b139e60db";
 
+// Generate QR code URL using a QR code service
+const getQRCodeUrl = (address: string, dark: boolean = false) => {
+  const bgColor = dark ? "000000" : "FFFFFF";
+  const fgColor = dark ? "FFFFFF" : "000000";
+  return `https://api.qrserver.com/v1/create-qr-code/?size=256x256&bgcolor=${bgColor}&color=${fgColor}&data=${encodeURIComponent(address)}`;
+};
+
 export function DonationWalletModal({ isOpen, onClose }: DonationWalletModalProps) {
   const [copied, setCopied] = useState(false);
   const { resolvedTheme } = useTheme();
   
-  // Select QR code image based on theme
-  const qrImage = resolvedTheme === "dark" ? qrDark : qrLight;
+  // Generate QR code URL based on theme
+  const qrImageUrl = getQRCodeUrl(WALLET_ADDRESS, resolvedTheme === "dark");
 
   const handleCopyAddress = async () => {
     try {
@@ -92,9 +97,13 @@ export function DonationWalletModal({ isOpen, onClose }: DonationWalletModalProp
             <div className="flex justify-center">
               <div className="bg-card border border-border rounded-lg p-4 md:p-6 shadow-sm">
                 <img
-                  src={typeof qrImage === 'string' ? qrImage : (qrImage as any).src || (resolvedTheme === "dark" ? "/assets/qrDonoUwan-dark.png" : "/assets/qrDonoUwan-light.png")}
+                  src={qrImageUrl}
                   alt="Ethereum Wallet QR Code"
                   className="w-48 h-48 md:w-64 md:h-64 object-contain"
+                  onError={(e) => {
+                    // Fallback if QR code service fails
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
                 />
               </div>
             </div>
