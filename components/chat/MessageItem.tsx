@@ -32,7 +32,7 @@ export function MessageItem({ message, selectedColors }: MessageItemProps) {
         className={`max-w-3xl rounded-lg px-4 py-3 ${
           isUser
             ? 'bg-yellow-400/20 border-2 border-yellow-400 text-black dark:bg-yellow-400/20 dark:border-yellow-400 dark:text-white'
-            : 'bg-white text-black dark:bg-black dark:text-white border-2'
+            : 'bg-white/30 text-black dark:bg-black/30 dark:text-white border-2'
         }`}
         style={!isUser && borderColor ? { borderColor } : undefined}
       >

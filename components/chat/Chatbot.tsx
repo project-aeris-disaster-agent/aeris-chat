@@ -381,7 +381,7 @@ export function Chatbot() {
                     className="w-full sm:w-auto sm:min-w-[160px]"
                     colors={selectedColors}
                   >
-                    Request Assistance
+                    REPORT INCIDENT
                   </GradientButton>
                 </div>
 
