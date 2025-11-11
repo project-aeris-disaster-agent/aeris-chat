@@ -368,7 +368,7 @@ export function Chatbot() {
                     colors={[[185, 28, 28], [239, 68, 68], [185, 28, 28]]}
                     onClick={handleSOSCall}
                   >
-                    SOS CALL
+                    CALL 911
                   </GradientButton>
                   <GradientButton 
                     className="w-full sm:w-auto sm:min-w-[160px]"
