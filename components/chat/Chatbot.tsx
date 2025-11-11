@@ -25,13 +25,10 @@ import { SOSButton } from "@/components/chat/SOSButton";
 import { GradientButton } from "@/components/ui/gradient-button";
 
 import { EmergencyHotlinesModal } from "@/components/chat/EmergencyHotlinesModal";
-<<<<<<< Updated upstream
-=======
 import { DonationWalletModal } from "@/components/chat/DonationWalletModal";
 import { MessageList } from "@/components/chat/MessageList";
 import { useChat } from "@/hooks/useChat";
 import { useSessions } from "@/hooks/useSessions";
->>>>>>> Stashed changes
 
 export function Chatbot() {
 
@@ -40,6 +37,7 @@ export function Chatbot() {
   const [isSOSActive, setIsSOSActive] = React.useState(false);
 
   const [isHotlinesModalOpen, setIsHotlinesModalOpen] = React.useState(false);
+  const [isDonationModalOpen, setIsDonationModalOpen] = React.useState(false);
 
   const [mousePosition, setMousePosition] = React.useState<{ x: number; y: number } | null>(null);
 
@@ -418,6 +416,7 @@ export function Chatbot() {
                     variant="default"
                     size="sm"
                     className="mb-2 text-xs md:text-sm bg-yellow-500 hover:bg-yellow-600 text-black font-semibold"
+                    onClick={() => setIsDonationModalOpen(true)}
                   >
                     DONATE
                   </Button>
@@ -535,6 +534,12 @@ export function Chatbot() {
       <EmergencyHotlinesModal
         isOpen={isHotlinesModalOpen}
         onClose={() => setIsHotlinesModalOpen(false)}
+      />
+
+      {/* Donation Wallet Modal */}
+      <DonationWalletModal
+        isOpen={isDonationModalOpen}
+        onClose={() => setIsDonationModalOpen(false)}
       />
 
     </div>
