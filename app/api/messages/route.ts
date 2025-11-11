@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { AUTH_DISABLED } from '@/lib/config'
@@ -5,7 +7,7 @@ import { AUTH_DISABLED } from '@/lib/config'
 // Get messages for a session
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
+    const { searchParams } = request.nextUrl
     const sessionId = searchParams.get('sessionId')
     const anonymousId = searchParams.get('anonymousId')
 
