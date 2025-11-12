@@ -26,6 +26,7 @@
     --radius: 0.5rem;
     --foreground-rgb: 31, 41, 55;
     --background-rgb: 255, 255, 255;
+    --viewport-height: 100vh;
   }
 
   .dark {
@@ -53,10 +54,24 @@
   }
 }
 
+@supports (height: 100svh) {
+  :root {
+    --viewport-height: 100svh;
+  }
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --viewport-height: 100dvh;
+  }
+}
+
 body {
   color: hsl(var(--foreground));
   background: hsl(var(--background));
   transition: background-color 0.3s ease, color 0.3s ease;
+  min-height: var(--viewport-height);
+  overflow-x: hidden;
 }
 
 @layer utilities {
@@ -71,6 +86,30 @@ body {
   
   .pt-safe {
     padding-top: env(safe-area-inset-top);
+  }
+
+  .min-h-viewport {
+    min-height: var(--viewport-height);
+  }
+
+  .h-viewport {
+    height: var(--viewport-height);
+  }
+
+  .max-h-viewport {
+    max-height: var(--viewport-height);
+  }
+
+  .top-safe {
+    top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+  }
+
+  .left-safe {
+    left: calc(env(safe-area-inset-left, 0px) + 0.5rem);
+  }
+
+  .right-safe {
+    right: calc(env(safe-area-inset-right, 0px) + 0.5rem);
   }
 }
 

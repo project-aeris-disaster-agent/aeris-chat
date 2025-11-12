@@ -10,7 +10,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-primary">
+    <main className="flex min-h-viewport flex-col items-center justify-center px-4 py-6 sm:p-8 bg-primary pt-safe pb-safe">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-text-primary mb-2">Welcome Back</h1>
@@ -19,7 +19,7 @@ export default function LoginPage() {
         <LoginForm />
         <div className="mt-6 text-center">
           <p className="text-text-secondary">
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
             <Link href="/signup" className="text-secondary hover:underline font-medium">
               Sign up
             </Link>

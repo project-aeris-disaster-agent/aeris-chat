@@ -29,6 +29,7 @@ export interface AnimationSettings {
   saturation: number;
   contrast: number;
   glow: number;
+  vibrance: number;
 }
 
 interface ColorPickerProps {
@@ -50,7 +51,7 @@ export function ColorPicker({
   const [showAdvanced, setShowAdvanced] = React.useState(false);
 
   const defaultSettings: AnimationSettings = {
-    animationSpeed: 0.1,
+    animationSpeed: 0.5,
     opacityMin: 0.5,
     opacityMax: 1.0,
     dotSize: 6,
@@ -58,6 +59,7 @@ export function ColorPicker({
     saturation: 1.0,
     contrast: 1.0,
     glow: 0.0,
+    vibrance: 0.0,
   };
 
   const settings = animationSettings || defaultSettings;
@@ -337,6 +339,28 @@ export function ColorPicker({
                 <span>None</span>
                 <span>Medium</span>
                 <span>Strong</span>
+              </div>
+            </div>
+
+            {/* Vibrance */}
+            <div className="mb-4">
+              <label className="text-xs font-medium text-foreground mb-2 block">
+                Vibrance: {(settings.vibrance * 100).toFixed(0)}%
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={settings.vibrance}
+                onChange={(e) =>
+                  handleSettingsChange("vibrance", parseFloat(e.target.value))
+                }
+                className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                <span>Neutral</span>
+                <span>Enhanced</span>
               </div>
             </div>
 

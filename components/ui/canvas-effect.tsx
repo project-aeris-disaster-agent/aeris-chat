@@ -30,6 +30,8 @@ export const CanvasRevealEffect = ({
 
   glow = 0.0,
 
+  vibrance = 0.0,
+
 }: {
 
   animationSpeed?: number;
@@ -53,6 +55,8 @@ export const CanvasRevealEffect = ({
   contrast?: number;
 
   glow?: number;
+
+  vibrance?: number;
 
 }) => {
 
@@ -90,6 +94,8 @@ export const CanvasRevealEffect = ({
           contrast={contrast}
 
           glow={glow}
+
+          vibrance={vibrance}
 
           shader={`
 
@@ -141,6 +147,8 @@ interface DotMatrixProps {
 
   glow?: number;
 
+  vibrance?: number;
+
 }
 
 const DotMatrix: React.FC<DotMatrixProps> = ({
@@ -168,6 +176,8 @@ const DotMatrix: React.FC<DotMatrixProps> = ({
   contrast = 1.0,
 
   glow = 0.0,
+
+  vibrance = 0.0,
 
 }) => {
 
@@ -317,9 +327,17 @@ const DotMatrix: React.FC<DotMatrixProps> = ({
 
       },
 
+      u_vibrance: {
+
+        value: vibrance,
+
+        type: "uniform1f",
+
+      },
+
     };
 
-  }, [colors, opacities, totalSize, dotSize, animationSpeed, hue, saturation, contrast, glow]);
+  }, [colors, opacities, totalSize, dotSize, animationSpeed, hue, saturation, contrast, glow, vibrance]);
 
   return (
 
@@ -354,6 +372,8 @@ const DotMatrix: React.FC<DotMatrixProps> = ({
         uniform float u_contrast;
 
         uniform float u_glow;
+
+        uniform float u_vibrance;
 
         out vec4 fragColor;
 
@@ -503,6 +523,14 @@ const DotMatrix: React.FC<DotMatrixProps> = ({
         float glow_intensity = opacity * u_glow;
         color += vec3(glow_intensity);
         color = min(color, vec3(1.0));
+      }
+
+      // Apply vibrance (boost saturation more on muted colors)
+      if (u_vibrance > 0.01) {
+        vec3 hsv = rgb2hsv(color);
+        float boost = (1.0 - hsv.y) * u_vibrance;
+        hsv.y = clamp(hsv.y + boost, 0.0, 1.0);
+        color = hsv2rgb(hsv);
       }
 
       ${shader}

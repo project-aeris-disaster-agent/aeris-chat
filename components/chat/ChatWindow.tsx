@@ -32,7 +32,7 @@ export function ChatWindow() {
   }, [sessions, sessionsLoading, currentSessionId])
 
   const handleNewSession = async () => {
-    const newSession = await createSession()
+    const newSession = await createSession(undefined)
     if (newSession) {
       setCurrentSessionId(newSession.id)
     }
@@ -41,7 +41,7 @@ export function ChatWindow() {
   const handleSendMessage = async (content: string) => {
     if (!currentSessionId) {
       // Create session if none exists
-      const newSession = await createSession()
+      const newSession = await createSession(undefined)
       if (newSession) {
         setCurrentSessionId(newSession.id)
         await sendMessage(content, newSession.id)

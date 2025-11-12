@@ -11,7 +11,7 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center p-8 bg-primary overflow-hidden">
+    <main className="relative flex min-h-viewport flex-col items-center justify-center px-4 py-6 sm:p-8 bg-primary overflow-hidden pt-safe pb-safe">
       {/* Background Canvas Reveal Effect */}
       <div className="absolute inset-0 z-0">
         <CanvasRevealEffect

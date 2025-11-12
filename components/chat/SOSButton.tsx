@@ -64,7 +64,7 @@ export function SOSButton({ isActive: externalIsActive, onToggleSOS }: SOSButton
           const track = stream.getVideoTracks()[0];
           const capabilities = track.getCapabilities();
           
-          if (capabilities.torch) {
+          if ('torch' in capabilities && capabilities.torch) {
             setFlashlightSupported(true);
           }
           
@@ -92,7 +92,7 @@ export function SOSButton({ isActive: externalIsActive, onToggleSOS }: SOSButton
       const track = stream.getVideoTracks()[0];
       const capabilities = track.getCapabilities();
       
-      if (capabilities.torch) {
+      if ('torch' in capabilities && capabilities.torch) {
         streamRef.current = stream;
         trackRef.current = track;
         setFlashlightPermission("granted");
@@ -344,7 +344,6 @@ export function SOSButton({ isActive: externalIsActive, onToggleSOS }: SOSButton
         variant="ghost"
         size="icon"
         className={cn(
-          "fixed top-2 left-2 md:top-4 md:left-4 z-[9999]",
           "h-10 w-10 md:h-12 md:w-12",
           "rounded-full",
           "border-2",
