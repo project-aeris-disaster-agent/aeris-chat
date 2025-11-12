@@ -5,6 +5,9 @@ import { SignupForm } from '@/components/auth/SignupForm'
 import { CanvasRevealEffect } from '@/components/ui'
 import { AUTH_DISABLED } from '@/lib/config'
 
+// Mark as dynamic to prevent static generation issues
+export const dynamic = 'force-dynamic'
+
 export default function SignupPage() {
   if (AUTH_DISABLED) {
     redirect('/chat')

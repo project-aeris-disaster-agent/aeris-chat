@@ -4,6 +4,9 @@ import Link from 'next/link'
 import { LoginForm } from '@/components/auth/LoginForm'
 import { AUTH_DISABLED } from '@/lib/config'
 
+// Mark as dynamic to prevent static generation issues
+export const dynamic = 'force-dynamic'
+
 export default function LoginPage() {
   if (AUTH_DISABLED) {
     redirect('/chat')
