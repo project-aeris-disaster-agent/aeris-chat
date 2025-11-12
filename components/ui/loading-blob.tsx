@@ -22,7 +22,7 @@ export function LoadingBlob({ isLoading, colors, className }: LoadingBlobProps) 
           exit={{ opacity: 0 }}
           transition={{ duration: 0.3, ease: "easeInOut" }}
           className={cn(
-            "fixed inset-0 z-[10000] flex items-center justify-center pointer-events-none",
+            "fixed inset-0 z-[10000] flex flex-col items-center justify-center gap-4 pointer-events-none",
             className
           )}
         >
@@ -33,6 +33,7 @@ export function LoadingBlob({ isLoading, colors, className }: LoadingBlobProps) 
             blur="1vmin"
             className="pointer-events-none"
           />
+          <p className="text-sm md:text-base font-medium text-muted-foreground">AI is thinking...</p>
         </motion.div>
       )}
     </AnimatePresence>
