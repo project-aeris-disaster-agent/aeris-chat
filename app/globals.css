@@ -54,15 +54,25 @@
   }
 }
 
-@supports (height: 100svh) {
+/* Mobile-first viewport height handling */
+/* Use dvh (dynamic viewport height) for better mobile support */
+@supports (height: 100dvh) {
+  :root {
+    --viewport-height: 100dvh;
+  }
+}
+
+/* Fallback to svh (small viewport height) if dvh not supported */
+@supports (height: 100svh) and not (height: 100dvh) {
   :root {
     --viewport-height: 100svh;
   }
 }
 
-@supports (height: 100dvh) {
+/* Final fallback to vh */
+@supports not (height: 100dvh) and not (height: 100svh) {
   :root {
-    --viewport-height: 100dvh;
+    --viewport-height: 100vh;
   }
 }
 
@@ -72,6 +82,14 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
   min-height: var(--viewport-height);
   overflow-x: hidden;
+  /* Prevent horizontal scroll on mobile */
+  position: relative;
+  width: 100%;
+  /* Prevent text size adjustment on iOS */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Prevent pull-to-refresh on mobile (can interfere with scrolling) */
+  overscroll-behavior-y: contain;
 }
 
 @layer utilities {
@@ -110,6 +128,54 @@ body {
 
   .right-safe {
     right: calc(env(safe-area-inset-right, 0px) + 0.5rem);
+  }
+
+  .bottom-safe {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+  }
+
+  /* Mobile-specific utilities */
+  .pb-safe-mobile {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
+  }
+
+  .pt-safe-mobile {
+    padding-top: max(1rem, env(safe-area-inset-top, 1rem));
+  }
+
+  /* Prevent zoom on input focus (iOS Safari) */
+  @media screen and (max-width: 768px) {
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
+  }
+
+  /* Ensure touch targets are at least 44x44px for iOS accessibility */
+  @media (pointer: coarse) {
+    button,
+    a,
+    [role="button"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
+  }
+
+  /* Smooth scrolling on mobile */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  /* Better touch scrolling on iOS */
+  .overflow-auto,
+  .overflow-y-auto,
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
   }
 }
 

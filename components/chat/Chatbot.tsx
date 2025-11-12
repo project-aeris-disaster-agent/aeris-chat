@@ -18,6 +18,8 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 import { ColorSlider, AnimationSettings } from "@/components/ui/color-slider";
 
+import { LoadingBlob } from "@/components/ui/loading-blob";
+
 import AERISLogo from "@/assets/AERIS LOGO.svg";
 
 import { SOSButton } from "@/components/chat/SOSButton";
@@ -319,7 +321,7 @@ export function Chatbot() {
 
   return (
 
-    <div ref={containerRef} className="relative flex-1 h-full w-full flex flex-col">
+    <div ref={containerRef} className="relative flex-1 h-full w-full flex flex-col overflow-hidden">
 
       <AnimatePresence>
         {errorPopup && (
@@ -330,6 +332,7 @@ export function Chatbot() {
             exit={{ y: -40, opacity: 0 }}
             transition={{ type: "spring", stiffness: 260, damping: 24 }}
             className="pointer-events-none fixed inset-x-0 top-safe z-[9998] flex justify-center px-3"
+            style={{ top: `calc(env(safe-area-inset-top, 0px) + 0.5rem)` }}
           >
             <div className="pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/90 px-4 py-3 text-destructive-foreground shadow-lg backdrop-blur-sm dark:bg-destructive">
               <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
@@ -352,7 +355,13 @@ export function Chatbot() {
       </AnimatePresence>
 
       {/* SOS Button & Scroll Control - Top Left */}
-      <div className="fixed top-safe left-safe z-[9999] flex items-center gap-2 md:top-4 md:left-4">
+      <div 
+        className="fixed top-safe left-safe z-[9999] flex items-center gap-2 md:top-4 md:left-4"
+        style={{ 
+          top: `calc(env(safe-area-inset-top, 0px) + 0.5rem)`,
+          left: `calc(env(safe-area-inset-left, 0px) + 0.5rem)`
+        }}
+      >
         <SOSButton isActive={isSOSActive} onToggleSOS={() => setIsSOSActive((prev) => !prev)} />
         <AnimatePresence>
           {showScrollButton && (
@@ -379,7 +388,13 @@ export function Chatbot() {
       </div>
 
       {/* Theme Toggle & Color Picker - Top Right */}
-      <div className="absolute top-safe right-safe z-30 flex flex-wrap gap-2 justify-end md:top-4 md:right-4">
+      <div 
+        className="absolute top-safe right-safe z-30 flex flex-wrap gap-2 justify-end md:top-4 md:right-4"
+        style={{ 
+          top: `calc(env(safe-area-inset-top, 0px) + 0.5rem)`,
+          right: `calc(env(safe-area-inset-right, 0px) + 0.5rem)`
+        }}
+      >
         <ColorSlider
           selectedColors={selectedColors}
           onColorChange={setSelectedColors}
@@ -401,7 +416,7 @@ export function Chatbot() {
 
       >
 
-        <div className="relative flex w-full flex-1 flex-col items-center justify-start gap-4 p-3 sm:p-4 lg:p-6">
+        <div className="relative flex w-full flex-1 flex-col items-center justify-start gap-4 p-3 sm:p-4 lg:p-6 min-h-0">
 
           <AnimatePresence>
 
@@ -470,11 +485,11 @@ export function Chatbot() {
             </div>
           )}
 
-          <div className="z-20 w-full flex-1 flex flex-col min-h-0">
+          <div className="z-20 w-full flex-1 flex flex-col min-h-0 overflow-hidden">
 
             {/* AERIS Branding - At Top */}
             {!isSOSActive && (
-              <div className="px-3 md:px-3 lg:px-4 py-2 md:py-1.5 lg:py-2">
+              <div className="px-3 md:px-3 lg:px-4 py-2 md:py-1.5 lg:py-2 flex-shrink-0">
                 <div className="flex flex-col items-center justify-center">
                   <img
                     src={typeof AERISLogo === 'string' ? AERISLogo : AERISLogo.src || '/assets/AERIS LOGO.svg'} 
@@ -491,7 +506,7 @@ export function Chatbot() {
               </div>
             )}
 
-            <ScrollArea className="flex-1 w-full overflow-auto">
+            <ScrollArea className="flex-1 w-full overflow-auto min-h-0">
               <div className="py-1 md:py-0.5">
                 {/* Action Buttons */}
                 <div ref={mainButtonsRef} className="max-w-5xl mx-auto mt-3 sm:mt-4 md:mt-1.5 lg:mt-2 px-2 md:px-3 lg:px-4">
@@ -552,12 +567,12 @@ export function Chatbot() {
 
             {/* UwanPH Branding - Above Chat Input */}
             {!isSOSActive && (
-              <div className="px-3 md:px-3 lg:px-4 py-2 md:py-1.5 lg:py-2 mb-2 md:mb-1.5">
+              <div className="px-3 md:px-3 lg:px-4 py-2 md:py-1.5 lg:py-2 mb-2 md:mb-1.5 flex-shrink-0">
                 <div className="flex flex-col items-center justify-center">
                   <Button
                     variant="default"
                     size="sm"
-                    className="mb-2 md:mb-1.5 text-xs md:text-xs lg:text-sm px-4 md:px-3 py-2 md:py-1.5 bg-yellow-500 hover:bg-yellow-600 text-black font-semibold"
+                    className="mb-2 md:mb-1.5 text-xs md:text-xs lg:text-sm px-4 md:px-3 py-2 md:py-1.5 bg-yellow-500 hover:bg-yellow-600 text-black font-semibold min-h-[44px]"
                     onClick={() => setIsDonationModalOpen(true)}
                   >
                     DONATE
@@ -589,11 +604,11 @@ export function Chatbot() {
               </div>
             )}
 
-            <div className="relative mt-2 md:mt-1.5 mb-4 md:mb-2 w-full px-2 md:px-3 lg:px-4" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0.5rem))' }}>
+            <div className="relative mt-2 md:mt-1.5 mb-2 md:mb-2 w-full px-2 md:px-3 lg:px-4 flex-shrink-0 pb-safe-mobile">
               <form onSubmit={handleSubmit}>
                 <div className="relative max-w-4xl mx-auto">
                   <Input
-                    className="pl-10 md:pl-10 pr-10 md:pr-10 h-10 md:h-9 lg:h-10 text-sm md:text-sm lg:text-base"
+                    className="pl-10 md:pl-10 pr-10 md:pr-10 h-12 md:h-9 lg:h-10 text-base md:text-sm lg:text-base min-h-[44px]"
                     placeholder="Ask something with AI"
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}
@@ -603,24 +618,24 @@ export function Chatbot() {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute left-1 md:left-1 top-1/2 -translate-y-1/2 h-7 w-7 md:h-7 md:w-7 lg:h-8 lg:w-8 rounded-sm"
+                    className="absolute left-1 md:left-1 top-1/2 -translate-y-1/2 h-10 w-10 md:h-7 md:w-7 lg:h-8 lg:w-8 rounded-sm min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0"
                     onClick={handleNewSession}
                     disabled={isSending || messagesLoading}
                   >
-                    <Plus className="h-4 w-4 md:h-4 md:w-4 lg:h-4 lg:w-4" />
+                    <Plus className="h-5 w-5 md:h-4 md:w-4 lg:h-4 lg:w-4" />
                     <span className="sr-only">New Chat</span>
                   </Button>
                   <Button
                     type="submit"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-1 md:right-1 top-1/2 -translate-y-1/2 h-7 w-7 md:h-7 md:w-7 lg:h-8 lg:w-8 rounded-sm"
+                    className="absolute right-1 md:right-1 top-1/2 -translate-y-1/2 h-10 w-10 md:h-7 md:w-7 lg:h-8 lg:w-8 rounded-sm min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0"
                     disabled={!messageInput.trim() || isSending || messagesLoading}
                   >
                     {isSending ? (
-                      <div className="animate-spin rounded-full h-4 w-4 md:h-4 md:w-4 lg:h-4 lg:w-4 border-2 border-current border-t-transparent"></div>
+                      <div className="animate-spin rounded-full h-5 w-5 md:h-4 md:w-4 lg:h-4 lg:w-4 border-2 border-current border-t-transparent"></div>
                     ) : (
-                      <Send className="h-4 w-4 md:h-4 md:w-4 lg:h-4 lg:w-4" />
+                      <Send className="h-5 w-5 md:h-4 md:w-4 lg:h-4 lg:w-4" />
                     )}
                   </Button>
                 </div>
@@ -628,7 +643,7 @@ export function Chatbot() {
             </div>
 
             {/* Footer */}
-            <div className="w-full px-2 md:px-3 lg:px-4 pb-2 md:pb-1.5 lg:pb-2 text-center">
+            <div className="w-full px-2 md:px-3 lg:px-4 pb-2 md:pb-1.5 lg:pb-2 text-center flex-shrink-0">
               <p className="text-xs md:text-xs lg:text-sm text-foreground dark:text-white">
                 New Prontera™ All Rights Reserved 2025
               </p>
@@ -651,6 +666,9 @@ export function Chatbot() {
         isOpen={isDonationModalOpen}
         onClose={() => setIsDonationModalOpen(false)}
       />
+
+      {/* Loading Blob Overlay */}
+      <LoadingBlob isLoading={messagesLoading} colors={selectedColors} />
 
     </div>
 

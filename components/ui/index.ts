@@ -6,4 +6,5 @@ export { Separator } from "./separator";
 export { ThemeToggle } from "./theme-toggle";
 export { ColorPicker } from "./color-picker";
 export { AnimatedBlobs } from "./animated-blobs";
+export { LoadingBlob } from "./loading-blob";
 
