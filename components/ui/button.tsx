@@ -77,59 +77,6 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
 
     const Comp = asChild ? Slot : "button"
-    const buttonRef = React.useRef<HTMLButtonElement | null>(null)
-
-    // Combine refs
-    React.useImperativeHandle(ref, () => buttonRef.current as HTMLButtonElement)
-
-    // iOS WebKit fix: Ensure touch events don't prevent click events
-    React.useEffect(() => {
-      const button = buttonRef.current
-      if (!button || asChild) return
-
-      let touchStartTime = 0
-      let touchMoved = false
-
-      const handleTouchStart = () => {
-        touchStartTime = Date.now()
-        touchMoved = false
-      }
-
-      const handleTouchMove = () => {
-        touchMoved = true
-      }
-
-      const handleTouchEnd = (e: TouchEvent) => {
-        // Only trigger click if touch was quick and didn't move (tap, not swipe)
-        const touchDuration = Date.now() - touchStartTime
-        if (!touchMoved && touchDuration < 300 && !button.disabled) {
-          // Small delay to ensure click event fires naturally first
-          // If click doesn't fire within 100ms, trigger it manually
-          setTimeout(() => {
-            if (button.isConnected && !button.disabled) {
-              // Check if click already fired by checking if handler was called
-              // If not, manually trigger it
-              const clickEvent = new MouseEvent('click', {
-                bubbles: true,
-                cancelable: true,
-                view: window,
-              })
-              button.dispatchEvent(clickEvent)
-            }
-          }, 50)
-        }
-      }
-
-      button.addEventListener('touchstart', handleTouchStart, { passive: true })
-      button.addEventListener('touchmove', handleTouchMove, { passive: true })
-      button.addEventListener('touchend', handleTouchEnd, { passive: true })
-
-      return () => {
-        button.removeEventListener('touchstart', handleTouchStart)
-        button.removeEventListener('touchmove', handleTouchMove)
-        button.removeEventListener('touchend', handleTouchEnd)
-      }
-    }, [asChild])
 
     return (
 
@@ -137,14 +84,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
         className={cn(buttonVariants({ variant, size, className }))}
 
-        ref={(node: HTMLButtonElement) => {
-          buttonRef.current = node
-          if (typeof ref === 'function') {
-            ref(node)
-          } else if (ref) {
-            (ref as React.MutableRefObject<HTMLButtonElement | null>).current = node
-          }
-        }}
+        ref={ref}
 
         {...props}
 

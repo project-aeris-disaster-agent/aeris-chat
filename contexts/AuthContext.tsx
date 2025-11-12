@@ -20,7 +20,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [appUser, setAppUser] = useState<AppUser | null>(null)
   const [loading, setLoading] = useState(true)
-  const supabase = createClient()
 
   useEffect(() => {
     if (AUTH_DISABLED) {
@@ -29,11 +28,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
+    // Lazy-load Supabase client only when needed and only on client-side
+    let supabase: ReturnType<typeof createClient> | null = null
+    try {
+      supabase = createClient()
+    } catch (error) {
+      // If Supabase is not configured, treat as auth disabled
+      console.warn('Supabase client creation failed, treating as auth disabled:', error)
+      setLoading(false)
+      return
+    }
+
+    if (!supabase) {
+      setLoading(false)
+      return
+    }
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       if (session?.user) {
-        fetchAppUser(session.user.id)
+        fetchAppUser(session.user.id, supabase!)
       } else {
         setLoading(false)
       }
@@ -48,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       if (session?.user) {
-        fetchAppUser(session.user.id)
+        fetchAppUser(session.user.id, supabase!)
       } else {
         setAppUser(null)
         setLoading(false)
@@ -58,9 +73,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  const fetchAppUser = async (userId: string) => {
+  const fetchAppUser = async (userId: string, supabaseClient: ReturnType<typeof createClient>) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseClient
         .from('users')
         .select('*')
         .eq('id', userId)
@@ -77,14 +92,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
-    setAppUser(null)
+    if (AUTH_DISABLED) return
+    
+    try {
+      const supabase = createClient()
+      await supabase.auth.signOut()
+      setUser(null)
+      setAppUser(null)
+    } catch (error) {
+      console.error('Error signing out:', error)
+    }
   }
 
   const refreshUser = async () => {
-    if (user) {
-      await fetchAppUser(user.id)
+    if (AUTH_DISABLED || !user) return
+    
+    try {
+      const supabase = createClient()
+      await fetchAppUser(user.id, supabase)
+    } catch (error) {
+      console.error('Error refreshing user:', error)
     }
   }
 
