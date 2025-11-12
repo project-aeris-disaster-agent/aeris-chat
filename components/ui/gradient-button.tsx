@@ -34,6 +34,8 @@ const gradientButtonVariants = cva(
 
     "disabled:pointer-events-none disabled:opacity-50",
 
+    "cursor-pointer",
+
   ],
 
   {
@@ -76,6 +78,28 @@ const GradientButton = React.forwardRef<HTMLButtonElement, GradientButtonProps>(
   ({ className, variant, asChild = false, colors, style, ...props }, ref) => {
 
     const Comp = asChild ? Slot : "button"
+    const buttonRef = React.useRef<HTMLButtonElement | null>(null)
+
+    // Combine refs
+    React.useImperativeHandle(ref, () => buttonRef.current as HTMLButtonElement)
+
+    // iOS WebKit fix: Add empty touch event listeners to ensure buttons are recognized as interactive
+    React.useEffect(() => {
+      const button = buttonRef.current
+      if (!button || asChild) return
+
+      // Empty touch listeners help iOS WebKit recognize buttons as interactive
+      const handleTouchStart = () => {}
+      const handleTouchEnd = () => {}
+
+      button.addEventListener('touchstart', handleTouchStart, { passive: true })
+      button.addEventListener('touchend', handleTouchEnd, { passive: true })
+
+      return () => {
+        button.removeEventListener('touchstart', handleTouchStart)
+        button.removeEventListener('touchend', handleTouchEnd)
+      }
+    }, [asChild])
 
     // Generate CSS custom properties from colors
     const cssVars = React.useMemo(() => {
@@ -112,7 +136,14 @@ const GradientButton = React.forwardRef<HTMLButtonElement, GradientButtonProps>(
 
         className={cn(gradientButtonVariants({ variant, className }))}
 
-        ref={ref}
+        ref={(node: HTMLButtonElement) => {
+          buttonRef.current = node
+          if (typeof ref === 'function') {
+            ref(node)
+          } else if (ref) {
+            (ref as React.MutableRefObject<HTMLButtonElement | null>).current = node
+          }
+        }}
 
         style={combinedStyle}
 

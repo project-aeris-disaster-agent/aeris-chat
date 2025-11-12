@@ -164,6 +164,44 @@ body {
     }
   }
 
+  /* iOS Safari touch interaction fixes */
+  button,
+  a,
+  [role="button"],
+  input[type="button"],
+  input[type="submit"],
+  label {
+    cursor: pointer;
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+
+  /* Links should allow text selection but still be tappable */
+  a {
+    user-select: auto;
+  }
+
+  /* Inputs and textareas should allow text selection */
+  input:not([type="button"]):not([type="submit"]),
+  textarea {
+    user-select: auto;
+    touch-action: auto;
+  }
+
+  /* Ensure interactive elements are properly tappable on iOS */
+  @supports (-webkit-touch-callout: none) {
+    button,
+    a,
+    [role="button"],
+    input[type="button"],
+    input[type="submit"],
+    label {
+      -webkit-tap-highlight-color: rgba(0, 0, 0, 0.2);
+    }
+  }
+
   /* Smooth scrolling on mobile */
   @media (prefers-reduced-motion: no-preference) {
     html {
@@ -171,11 +209,18 @@ body {
     }
   }
 
-  /* Better touch scrolling on iOS */
+  /* Better touch scrolling on iOS - only on scroll containers, not buttons */
   .overflow-auto,
   .overflow-y-auto,
   .overflow-x-auto {
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* Ensure buttons don't inherit overflow scrolling properties */
+  button,
+  a,
+  [role="button"] {
+    -webkit-overflow-scrolling: auto;
   }
 }
 

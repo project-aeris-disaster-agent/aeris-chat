@@ -229,22 +229,45 @@ export function Chatbot() {
 
     };
 
+    const handleTouchStart = (e: TouchEvent) => {
+      // Don't interfere with button clicks - allow interactive elements to handle their own events
+      const target = e.target as HTMLElement;
+      if (target && (
+        target.tagName === 'BUTTON' ||
+        target.tagName === 'A' ||
+        target.closest('button') ||
+        target.closest('a') ||
+        target.closest('[role="button"]') ||
+        target.closest('input') ||
+        target.closest('textarea')
+      )) {
+        // Don't interfere with interactive elements - let them handle their own touch events
+        return;
+      }
+    };
+
     const handleTouchMove = (e: TouchEvent) => {
-
-      if (containerRef.current && e.touches.length > 0) {
-
-        const rect = containerRef.current.getBoundingClientRect();
-
-        setMousePosition({
-
-          x: e.touches[0].clientX - rect.left,
-
-          y: e.touches[0].clientY - rect.top,
-
-        });
-
+      // Don't interfere with button clicks - only track if not on an interactive element
+      const target = e.target as HTMLElement;
+      if (target && (
+        target.tagName === 'BUTTON' ||
+        target.tagName === 'A' ||
+        target.closest('button') ||
+        target.closest('a') ||
+        target.closest('[role="button"]') ||
+        target.closest('input') ||
+        target.closest('textarea')
+      )) {
+        return; // Don't track touch moves on buttons/links/inputs
       }
 
+      if (containerRef.current && e.touches.length > 0) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setMousePosition({
+          x: e.touches[0].clientX - rect.left,
+          y: e.touches[0].clientY - rect.top,
+        });
+      }
     };
 
     const handleMouseLeave = () => {
@@ -259,6 +282,9 @@ export function Chatbot() {
 
       container.addEventListener("mousemove", handleMouseMove);
 
+      // Add touchstart handler to prevent interference with button clicks
+      container.addEventListener("touchstart", handleTouchStart, { passive: true });
+
       container.addEventListener("touchmove", handleTouchMove, { passive: true });
 
       container.addEventListener("mouseleave", handleMouseLeave);
@@ -272,6 +298,8 @@ export function Chatbot() {
       if (container) {
 
         container.removeEventListener("mousemove", handleMouseMove);
+
+        container.removeEventListener("touchstart", handleTouchStart);
 
         container.removeEventListener("touchmove", handleTouchMove);
 
@@ -410,7 +438,20 @@ export function Chatbot() {
 
         onMouseLeave={() => setHovered(false)}
 
-        onTouchStart={triggerBackgroundAnimation}
+        onTouchStart={(e) => {
+          // Don't trigger animation if touching a button or interactive element
+          const target = e.target as HTMLElement;
+          if (target && (
+            target.tagName === 'BUTTON' ||
+            target.tagName === 'A' ||
+            target.closest('button') ||
+            target.closest('a') ||
+            target.closest('[role="button"]')
+          )) {
+            return;
+          }
+          triggerBackgroundAnimation();
+        }}
 
         className="relative mx-auto flex h-full w-full flex-col items-stretch justify-start overflow-hidden"
 

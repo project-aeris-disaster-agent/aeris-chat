@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
 
-  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
 
   {
 
@@ -77,6 +77,28 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
 
     const Comp = asChild ? Slot : "button"
+    const buttonRef = React.useRef<HTMLButtonElement | null>(null)
+
+    // Combine refs
+    React.useImperativeHandle(ref, () => buttonRef.current as HTMLButtonElement)
+
+    // iOS WebKit fix: Add empty touch event listeners to ensure buttons are recognized as interactive
+    React.useEffect(() => {
+      const button = buttonRef.current
+      if (!button || asChild) return
+
+      // Empty touch listeners help iOS WebKit recognize buttons as interactive
+      const handleTouchStart = () => {}
+      const handleTouchEnd = () => {}
+
+      button.addEventListener('touchstart', handleTouchStart, { passive: true })
+      button.addEventListener('touchend', handleTouchEnd, { passive: true })
+
+      return () => {
+        button.removeEventListener('touchstart', handleTouchStart)
+        button.removeEventListener('touchend', handleTouchEnd)
+      }
+    }, [asChild])
 
     return (
 
@@ -84,7 +106,14 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
         className={cn(buttonVariants({ variant, size, className }))}
 
-        ref={ref}
+        ref={(node: HTMLButtonElement) => {
+          buttonRef.current = node
+          if (typeof ref === 'function') {
+            ref(node)
+          } else if (ref) {
+            (ref as React.MutableRefObject<HTMLButtonElement | null>).current = node
+          }
+        }}
 
         {...props}
 
