@@ -241,7 +241,8 @@ export function Chatbot() {
         target.closest('input') ||
         target.closest('textarea')
       )) {
-        // Don't interfere with interactive elements - let them handle their own touch events
+        // Stop propagation to prevent container handlers from interfering
+        e.stopPropagation();
         return;
       }
     };
@@ -258,6 +259,8 @@ export function Chatbot() {
         target.closest('input') ||
         target.closest('textarea')
       )) {
+        // Stop propagation to prevent container handlers from interfering
+        e.stopPropagation();
         return; // Don't track touch moves on buttons/links/inputs
       }
 
@@ -446,8 +449,11 @@ export function Chatbot() {
             target.tagName === 'A' ||
             target.closest('button') ||
             target.closest('a') ||
-            target.closest('[role="button"]')
+            target.closest('[role="button"]') ||
+            target.closest('input') ||
+            target.closest('textarea')
           )) {
+            // Don't prevent default - let button handle its own events
             return;
           }
           triggerBackgroundAnimation();
