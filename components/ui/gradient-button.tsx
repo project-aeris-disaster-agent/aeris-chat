@@ -75,9 +75,18 @@ export interface GradientButtonProps
 
 const GradientButton = React.forwardRef<HTMLButtonElement, GradientButtonProps>(
 
-  ({ className, variant, asChild = false, colors, style, ...props }, ref) => {
+  ({ className, variant, asChild = false, colors, style, onClick, ...props }, ref) => {
 
     const Comp = asChild ? Slot : "button"
+
+    // iOS fix: Add touch handler to ensure onClick fires on iOS
+    // React's synthetic onClick doesn't always fire on iOS touch devices
+    const handleTouchEnd = (e: React.TouchEvent<HTMLButtonElement>) => {
+      e.preventDefault()
+      if (onClick) {
+        onClick(e as any)
+      }
+    }
 
     // Generate CSS custom properties from colors
     const cssVars = React.useMemo(() => {
@@ -117,6 +126,9 @@ const GradientButton = React.forwardRef<HTMLButtonElement, GradientButtonProps>(
         ref={ref}
 
         style={combinedStyle}
+
+        onClick={onClick}
+        onTouchEnd={handleTouchEnd}
 
         {...props}
 

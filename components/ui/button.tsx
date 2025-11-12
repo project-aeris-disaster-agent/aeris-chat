@@ -74,9 +74,18 @@ export interface ButtonProps
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, onClick, ...props }, ref) => {
 
     const Comp = asChild ? Slot : "button"
+
+    // iOS fix: Add touch handler to ensure onClick fires on iOS
+    // React's synthetic onClick doesn't always fire on iOS touch devices
+    const handleTouchEnd = (e: React.TouchEvent<HTMLButtonElement>) => {
+      e.preventDefault()
+      if (onClick) {
+        onClick(e as any)
+      }
+    }
 
     return (
 
@@ -85,6 +94,9 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         className={cn(buttonVariants({ variant, size, className }))}
 
         ref={ref}
+
+        onClick={onClick}
+        onTouchEnd={handleTouchEnd}
 
         {...props}
 
