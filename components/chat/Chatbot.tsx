@@ -423,10 +423,16 @@ export function Chatbot() {
           if (target && (
             target.tagName === 'BUTTON' ||
             target.tagName === 'A' ||
+            target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
             target.closest('button') ||
             target.closest('a') ||
-            target.closest('[role="button"]')
+            target.closest('[role="button"]') ||
+            target.closest('input') ||
+            target.closest('textarea') ||
+            target.closest('form')
           )) {
+            // Don't interfere with button/form interactions
             return;
           }
           triggerBackgroundAnimation();
@@ -649,8 +655,9 @@ export function Chatbot() {
                     type="submit"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-1 md:right-1 top-1/2 -translate-y-1/2 h-10 w-10 md:h-7 md:w-7 lg:h-8 lg:w-8 rounded-sm min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0"
+                    className="absolute right-1 md:right-1 top-1/2 -translate-y-1/2 h-10 w-10 md:h-7 md:w-7 lg:h-8 lg:w-8 rounded-sm min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 z-10 pointer-events-auto"
                     disabled={!messageInput.trim() || isSending || messagesLoading}
+                    aria-label="Send message"
                   >
                     {isSending ? (
                       <div className="animate-spin rounded-full h-5 w-5 md:h-4 md:w-4 lg:h-4 lg:w-4 border-2 border-current border-t-transparent"></div>

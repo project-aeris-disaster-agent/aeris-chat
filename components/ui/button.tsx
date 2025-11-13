@@ -74,13 +74,22 @@ export interface ButtonProps
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
-  ({ className, variant, size, asChild = false, onClick, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, onClick, type, ...props }, ref) => {
 
     const Comp = asChild ? Slot : "button"
 
     // iOS fix: Add touch handler to ensure onClick fires on iOS
     // React's synthetic onClick doesn't always fire on iOS touch devices
+    // IMPORTANT: Don't preventDefault for submit buttons - it blocks form submission!
     const handleTouchEnd = (e: React.TouchEvent<HTMLButtonElement>) => {
+      // For submit buttons, let the form handle submission naturally
+      // Don't prevent default, as it will block form submission on iOS
+      if (type === "submit") {
+        // Let the form submit naturally - onClick will fire with the form submission
+        return;
+      }
+      
+      // For non-submit buttons, prevent default and call onClick
       e.preventDefault()
       if (onClick) {
         onClick(e as any)
@@ -97,6 +106,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
         onClick={onClick}
         onTouchEnd={handleTouchEnd}
+        type={type}
 
         {...props}
 
