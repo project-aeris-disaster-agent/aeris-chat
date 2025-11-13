@@ -80,12 +80,19 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     // iOS fix: Add touch handler to ensure onClick fires on iOS
     // React's synthetic onClick doesn't always fire on iOS touch devices
-    // IMPORTANT: Don't preventDefault for submit buttons - it blocks form submission!
+    // IMPORTANT: For submit buttons, explicitly trigger form submission on touch devices
     const handleTouchEnd = (e: React.TouchEvent<HTMLButtonElement>) => {
-      // For submit buttons, let the form handle submission naturally
-      // Don't prevent default, as it will block form submission on iOS
+      // For submit buttons, explicitly trigger form submission on touch devices
+      // This is necessary because touch events don't always trigger form submission naturally
       if (type === "submit") {
-        // Let the form submit naturally - onClick will fire with the form submission
+        const button = e.currentTarget;
+        const form = button.closest('form');
+        if (form) {
+          // Use requestSubmit() which properly triggers the form's onSubmit handler
+          // This is safer than form.submit() as it respects validation and onSubmit
+          form.requestSubmit();
+        }
+        // Don't prevent default - let the form handle it naturally
         return;
       }
       
