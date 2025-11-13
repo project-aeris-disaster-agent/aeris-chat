@@ -59,10 +59,14 @@ export function Chatbot() {
 
   const [errorPopup, setErrorPopup] = React.useState<{ message: string; detail?: string } | null>(null);
   const [showScrollButton, setShowScrollButton] = React.useState(false);
+  const [animationKey, setAnimationKey] = React.useState(0); // Key to force animation restart
+  const [animationOpacity, setAnimationOpacity] = React.useState(1); // Control fade-out
 
   const containerRef = React.useRef<HTMLDivElement>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const animationRafRef = React.useRef<number | null>(null);
+  const animationTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const fadeOutTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const mainButtonsRef = React.useRef<HTMLDivElement>(null);
   const [messageInput, setMessageInput] = React.useState("");
   const [currentSessionId, setCurrentSessionId] = React.useState<string | null>(null);
@@ -114,14 +118,76 @@ export function Chatbot() {
 
   const triggerBackgroundAnimation = React.useCallback(() => {
     setHovered(false);
+    setAnimationOpacity(1); // Reset opacity when starting new animation
     if (animationRafRef.current !== null) {
       cancelAnimationFrame(animationRafRef.current);
+    }
+    // Clear any existing animation timeouts
+    if (animationTimeoutRef.current !== null) {
+      clearTimeout(animationTimeoutRef.current);
+      animationTimeoutRef.current = null;
+    }
+    if (fadeOutTimeoutRef.current !== null) {
+      clearTimeout(fadeOutTimeoutRef.current);
+      fadeOutTimeoutRef.current = null;
     }
     animationRafRef.current = requestAnimationFrame(() => {
       setHovered(true);
       animationRafRef.current = null;
+      
+      // Calculate animation duration based on shader intro animation
+      // The intro animation reveals from center outward:
+      // intro_offset = distance(u_resolution / 2.0 / u_total_size, st2) * 0.01 + (random(st2) * 0.15)
+      // Animation reveals when: u_time * animation_speed_factor >= intro_offset
+      // 
+      // For full screen reveal, we need to wait until the furthest corner is revealed.
+      // The maximum intro_offset depends on screen size:
+      // - Distance component: corner distance from center in grid cells * 0.01
+      //   For large screens (1920x1080), this can be 1.0-3.0+ depending on u_total_size (default 4)
+      // - Random component: up to 0.15
+      // 
+      // To ensure the animation fully fills the screen before restarting, we use a longer duration.
+      // With default animationSpeed of 0.5, we want at least 3-4 seconds for full reveal.
+      // Formula: (maxIntroOffset / animationSpeed) * 1000ms + buffer
+      // Using 1.5 as maxIntroOffset gives: (1.5 / 0.5) * 1000 = 3000ms base, + 2000ms buffer = 5000ms total
+      const maxIntroOffset = 1.5; // Increased to ensure full screen coverage for all screen sizes
+      const baseDuration = (maxIntroOffset / animationSettings.animationSpeed) * 1000;
+      const buffer = 2000; // 2 second buffer to ensure full reveal completes
+      const animationDuration = baseDuration + buffer;
+      
+      // Fade out animation before restarting
+      const fadeOutDuration = 800; // 0.8 seconds for fade-out
+      const fadeOutStartTime = animationDuration - fadeOutDuration;
+      
+      // Start fade-out before animation completes
+      fadeOutTimeoutRef.current = setTimeout(() => {
+        setAnimationOpacity(0); // Fade out
+      }, fadeOutStartTime);
+      
+      // Restart animation after fade-out completes
+      animationTimeoutRef.current = setTimeout(() => {
+        setHovered(false); // Hide animation
+        setAnimationKey(prev => prev + 1); // Increment key to force restart
+        setAnimationOpacity(1); // Reset opacity for next cycle
+        // Small delay before restarting to ensure clean transition
+        setTimeout(() => {
+          triggerBackgroundAnimation(); // Restart the animation
+        }, 100);
+      }, animationDuration);
     });
-  }, []);
+  }, [animationSettings.animationSpeed]);
+
+  // Trigger animation automatically when webapp loads completely
+  React.useEffect(() => {
+    // Wait for everything to load: sessions, messages, and DOM
+    if (!sessionsLoading && !messagesLoading && containerRef.current) {
+      // Small delay to ensure everything is rendered
+      const timer = setTimeout(() => {
+        triggerBackgroundAnimation();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [sessionsLoading, messagesLoading, triggerBackgroundAnimation]);
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
@@ -303,6 +369,12 @@ export function Chatbot() {
       if (animationRafRef.current !== null) {
         cancelAnimationFrame(animationRafRef.current);
       }
+      if (animationTimeoutRef.current !== null) {
+        clearTimeout(animationTimeoutRef.current);
+      }
+      if (fadeOutTimeoutRef.current !== null) {
+        clearTimeout(fadeOutTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -327,8 +399,10 @@ export function Chatbot() {
   }, []);
 
   return (
-
-    <div ref={containerRef} className="relative flex-1 h-full w-full flex flex-col overflow-hidden">
+    <>
+      <div ref={containerRef} className={`relative flex-1 h-full w-full flex flex-col overflow-hidden transition-all duration-300 ${
+        messagesLoading ? 'blur-sm' : ''
+      }`}>
 
       <AnimatePresence>
         {errorPopup && (
@@ -452,11 +526,15 @@ export function Chatbot() {
 
               <motion.div
 
-                initial={{ opacity: 1 }}
+                key={`animation-${animationKey}`}
 
-                animate={{ opacity: 1 }}
+                initial={{ opacity: 0 }}
 
-                exit={{ opacity: 1 }}
+                animate={{ opacity: animationOpacity }}
+
+                exit={{ opacity: 0 }}
+
+                transition={{ duration: 0.8, ease: "easeInOut" }}
 
                 className="absolute inset-0 h-full w-full object-cover"
 
@@ -579,10 +657,6 @@ export function Chatbot() {
                   <div className="space-y-2 md:space-y-3 overflow-hidden p-2 md:p-3 lg:p-4">
                     {messages.length > 0 ? (
                       <MessageList messages={messages} isLoading={messagesLoading} selectedColors={selectedColors} />
-                    ) : messagesLoading ? (
-                      <div className="flex items-center justify-center py-8 md:py-12">
-                        <div className="animate-spin rounded-full h-8 w-8 md:h-10 md:w-10 border-2 border-primary border-t-transparent"></div>
-                      </div>
                     ) : null}
                     <div ref={messagesEndRef} />
                   </div>
@@ -694,10 +768,11 @@ export function Chatbot() {
         onClose={() => setIsDonationModalOpen(false)}
       />
 
-      {/* Loading Blob Overlay */}
-      <LoadingBlob isLoading={messagesLoading} colors={selectedColors} />
+      </div>
 
-    </div>
+      {/* Loading Blob Overlay - Outside blurred container so it stays sharp */}
+      <LoadingBlob isLoading={messagesLoading} colors={selectedColors} />
+    </>
 
   );
 
