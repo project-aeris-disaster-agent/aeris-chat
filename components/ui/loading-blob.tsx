@@ -9,9 +9,15 @@ interface LoadingBlobProps {
   isLoading: boolean;
   colors?: number[][];
   className?: string;
+  message?: string;
 }
 
-export function LoadingBlob({ isLoading, colors, className }: LoadingBlobProps) {
+export function LoadingBlob({
+  isLoading,
+  colors,
+  className,
+  message = "Loading data, please wait...",
+}: LoadingBlobProps) {
   return (
     <AnimatePresence>
       {isLoading && (
@@ -33,7 +39,9 @@ export function LoadingBlob({ isLoading, colors, className }: LoadingBlobProps) 
             blur="1vmin"
             className="pointer-events-none"
           />
-          <p className="text-sm md:text-base font-medium text-muted-foreground">AI is thinking...</p>
+          <p className="text-sm md:text-base font-medium text-muted-foreground">
+            {message}
+          </p>
         </motion.div>
       )}
     </AnimatePresence>

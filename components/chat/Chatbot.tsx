@@ -4,7 +4,7 @@ import React from "react";
 
 import { CanvasRevealEffect } from "@/components/ui/canvas-effect";
 
-import { AlertCircle, Phone, Plus, Send, X } from "lucide-react";
+import { AlertCircle, MessageCircle, Phone, Plus, Send, X } from "lucide-react";
 
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -28,6 +28,8 @@ import { GradientButton } from "@/components/ui/gradient-button";
 
 import { EmergencyHotlinesModal } from "@/components/chat/EmergencyHotlinesModal";
 import { DonationWalletModal } from "@/components/chat/DonationWalletModal";
+import { ReportIncidentModal } from "@/components/chat/ReportIncidentModal";
+import { ReportInboxModal } from "@/components/chat/ReportInboxModal";
 import { MessageList } from "@/components/chat/MessageList";
 import { useChat } from "@/hooks/useChat";
 import { useSessions } from "@/hooks/useSessions";
@@ -40,6 +42,9 @@ export function Chatbot() {
 
   const [isHotlinesModalOpen, setIsHotlinesModalOpen] = React.useState(false);
   const [isDonationModalOpen, setIsDonationModalOpen] = React.useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = React.useState(false);
+  const [isReportInboxOpen, setIsReportInboxOpen] = React.useState(false);
+  const [reportInboxRefreshKey, setReportInboxRefreshKey] = React.useState(0);
 
   const [mousePosition, setMousePosition] = React.useState<{ x: number; y: number } | null>(null);
 
@@ -71,6 +76,7 @@ export function Chatbot() {
   const [messageInput, setMessageInput] = React.useState("");
   const [currentSessionId, setCurrentSessionId] = React.useState<string | null>(null);
   const [isSending, setIsSending] = React.useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = React.useState(false);
 
   // Chat hooks
   const { sessions, createSession, isLoading: sessionsLoading } = useSessions();
@@ -80,6 +86,15 @@ export function Chatbot() {
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const syncMotionPreference = () => setPrefersReducedMotion(media.matches);
+    syncMotionPreference();
+    media.addEventListener("change", syncMotionPreference);
+    return () => media.removeEventListener("change", syncMotionPreference);
+  }, []);
 
   // Initialize session on mount
   React.useEffect(() => {
@@ -476,6 +491,16 @@ export function Chatbot() {
           right: `calc(env(safe-area-inset-right, 0px) + 0.5rem)`
         }}
       >
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={() => setIsReportInboxOpen(true)}
+          className="h-10 w-10 rounded-full bg-background/80 shadow-sm backdrop-blur-sm md:h-9 md:w-9"
+          aria-label="Open report inbox"
+        >
+          <MessageCircle className="h-5 w-5 md:h-4 md:w-4" />
+        </Button>
         <ColorSlider
           selectedColors={selectedColors}
           onColorChange={setSelectedColors}
@@ -522,7 +547,7 @@ export function Chatbot() {
 
             <div className="tracking-tightest flex select-none flex-col py-2 text-center text-3xl font-extrabold leading-none md:flex-col md:text-8xl lg:flex-row"></div>
 
-            {hovered && (
+            {hovered && !prefersReducedMotion && (
 
               <motion.div
 
@@ -568,6 +593,10 @@ export function Chatbot() {
 
               </motion.div>
 
+            )}
+
+            {hovered && prefersReducedMotion && (
+              <div className="absolute inset-0 h-full w-full bg-gradient-to-br from-sky-400/10 via-cyan-400/5 to-blue-500/10" />
             )}
 
           </AnimatePresence>
@@ -636,17 +665,11 @@ export function Chatbot() {
                       CALL 911
                     </GradientButton>
                     <GradientButton 
-                      asChild
                       className="w-full sm:flex-1 md:text-xs lg:text-sm py-2 md:py-1.5 lg:py-2"
                       colors={selectedColors}
+                      onClick={() => setIsReportModalOpen(true)}
                     >
-                      <a
-                        href="https://forms.gle/sfGgN5HUADUvxhJs8"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        SUBMIT A REPORT
-                      </a>
+                      SUBMIT A REPORT
                     </GradientButton>
                   </div>
                 </div>
@@ -766,6 +789,19 @@ export function Chatbot() {
       <DonationWalletModal
         isOpen={isDonationModalOpen}
         onClose={() => setIsDonationModalOpen(false)}
+      />
+
+      <ReportIncidentModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        sessionId={currentSessionId}
+        onSubmitted={() => setReportInboxRefreshKey((key) => key + 1)}
+      />
+
+      <ReportInboxModal
+        isOpen={isReportInboxOpen}
+        onClose={() => setIsReportInboxOpen(false)}
+        refreshKey={reportInboxRefreshKey}
       />
 
       </div>
