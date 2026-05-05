@@ -5,6 +5,7 @@ import { X, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
+import banner2aeris from "@/assets/banner2aeris.jpg";
 
 interface DonationWalletModalProps {
   isOpen: boolean;
@@ -93,13 +94,21 @@ export function DonationWalletModal({ isOpen, onClose }: DonationWalletModalProp
 
           {/* Content */}
           <div className="p-4 md:p-6 space-y-6">
+            <div className="overflow-hidden rounded-lg border border-border bg-card">
+              <img
+                src={typeof banner2aeris === "string" ? banner2aeris : banner2aeris.src}
+                alt="Para sa impormasyon at tulong — disaster information and relief"
+                className="h-auto w-full max-h-32 object-contain object-center md:max-h-36"
+              />
+            </div>
+
             {/* QR Code */}
             <div className="flex justify-center">
-              <div className="bg-card border border-border rounded-lg p-4 md:p-6 shadow-sm">
+              <div className="bg-card border border-border rounded-lg p-3 md:p-5 shadow-sm">
                 <img
                   src={qrImageUrl}
                   alt="Ethereum Wallet QR Code"
-                  className="w-48 h-48 md:w-64 md:h-64 object-contain"
+                  className="w-40 h-40 md:w-52 md:h-52 object-contain"
                   onError={(e) => {
                     // Fallback if QR code service fails
                     (e.target as HTMLImageElement).style.display = 'none';
