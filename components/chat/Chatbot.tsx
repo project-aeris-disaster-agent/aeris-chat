@@ -268,7 +268,7 @@ export function Chatbot() {
 
       const message = backendUnavailable
         ? 'Servers are busy, try again later #6656'
-        : 'Server congestion error #6657';
+        : 'A.E.R.I.S.is under maintenance, try again later #6657';
 
       setErrorPopup({
         message,
