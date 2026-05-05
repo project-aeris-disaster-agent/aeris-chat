@@ -11,3 +11,4 @@ build
 supabase.txt
 .vercel
 *.tsbuildinfo
+.data

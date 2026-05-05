@@ -26,8 +26,51 @@ function RecenterMap({ center }: { center: [number, number] }) {
   const map = useMap();
 
   React.useEffect(() => {
+    map.invalidateSize({ animate: false });
     map.setView(center);
   }, [center, map]);
+
+  return null;
+}
+
+/**
+ * Leaflet measures the container on init; modals / overflow parents and slow
+ * mobile devices need multiple invalidateSize calls spread across longer
+ * intervals to ensure tiles render after CSS transitions settle.
+ */
+function InvalidateMapSize() {
+  const map = useMap();
+
+  React.useEffect(() => {
+    const fix = () => {
+      map.invalidateSize({ animate: false });
+    };
+
+    fix();
+    const raf = requestAnimationFrame(fix);
+    // Spread invalidations across a wider window to cover:
+    //   50ms - immediate layout settle
+    //   250ms - typical CSS transition duration
+    //   500ms - modal animation on slower devices
+    //   1000ms - last-resort for very slow mobile (low-end Android, older iOS)
+    const t1 = window.setTimeout(fix, 50);
+    const t2 = window.setTimeout(fix, 250);
+    const t3 = window.setTimeout(fix, 500);
+    const t4 = window.setTimeout(fix, 1000);
+
+    window.addEventListener("resize", fix);
+    window.addEventListener("orientationchange", fix);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+      window.clearTimeout(t4);
+      window.removeEventListener("resize", fix);
+      window.removeEventListener("orientationchange", fix);
+    };
+  }, [map]);
 
   return null;
 }
@@ -45,6 +88,7 @@ export function LocationMapPicker({ center, selected, onSelect }: LocationMapPic
   React.useEffect(() => {
     setMarkerPosition(selectedMarker);
   }, [selectedMarker]);
+
   const pinIcon = React.useMemo(
     () =>
       L.divIcon({
@@ -65,9 +109,13 @@ export function LocationMapPicker({ center, selected, onSelect }: LocationMapPic
     <MapContainer
       center={mapCenter}
       zoom={13}
-      scrollWheelZoom={true}
-      className="h-56 w-full rounded-md border border-border"
+      // Disable scroll-wheel zoom to prevent it from stealing page scroll on
+      // desktop, and to avoid conflicting with touch-scroll on mobile Safari /
+      // Android WebView. Users can still zoom with pinch-to-zoom.
+      scrollWheelZoom={false}
+      className="z-0 h-56 min-h-56 w-full rounded-md border border-border"
     >
+      <InvalidateMapSize />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
