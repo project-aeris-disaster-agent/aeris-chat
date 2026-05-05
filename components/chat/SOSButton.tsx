@@ -5,6 +5,8 @@ import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+type TorchVideoCapabilities = MediaTrackCapabilities & { torch?: boolean };
+
 export interface SOSButtonProps {
   isActive: boolean;
   onToggleSOS: () => void;
@@ -62,7 +64,7 @@ export function SOSButton({ isActive: externalIsActive, onToggleSOS }: SOSButton
             video: { facingMode: "environment" },
           });
           const track = stream.getVideoTracks()[0];
-          const capabilities = track.getCapabilities();
+          const capabilities = track.getCapabilities() as TorchVideoCapabilities;
           
           if (capabilities.torch) {
             setFlashlightSupported(true);
@@ -90,7 +92,7 @@ export function SOSButton({ isActive: externalIsActive, onToggleSOS }: SOSButton
       });
       
       const track = stream.getVideoTracks()[0];
-      const capabilities = track.getCapabilities();
+      const capabilities = track.getCapabilities() as TorchVideoCapabilities;
       
       if (capabilities.torch) {
         streamRef.current = stream;

@@ -61,7 +61,6 @@ export function Chatbot() {
     saturation: 1.0,
     contrast: 1.0,
     glow: 0.0,
-    vibrance: 0.0,
   });
 
   const [errorPopup, setErrorPopup] = React.useState<{ message: string; detail?: string } | null>(null);
@@ -588,8 +587,6 @@ export function Chatbot() {
                   contrast={animationSettings.contrast}
 
                   glow={animationSettings.glow}
-
-                  vibrance={animationSettings.vibrance}
 
                 />
 

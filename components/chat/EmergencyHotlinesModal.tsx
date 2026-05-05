@@ -237,7 +237,11 @@ interface HotlineCardProps {
 function HotlineCard({ hotline, onPhoneClick }: HotlineCardProps) {
   const isClickable = (phone: string): boolean => {
     const normalized = normalizePhoneNumber(phone);
-    return normalized && normalized.length > 0 && /^[\d+]+$/.test(normalized.replace(/\s/g, ''));
+    return Boolean(
+      normalized &&
+        normalized.length > 0 &&
+        /^[\d+]+$/.test(normalized.replace(/\s/g, "")),
+    );
   };
 
   return (
