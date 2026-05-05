@@ -9,3 +9,5 @@ build
 *.log
 .DS_Store
 supabase.txt
+.vercel
+*.tsbuildinfo
