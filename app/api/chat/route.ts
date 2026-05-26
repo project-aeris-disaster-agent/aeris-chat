@@ -9,6 +9,11 @@ import {
   getLlmHttpBaseUrl,
   LlmHttpError,
 } from '@/lib/llm-http'
+import {
+  callNvidiaChatCompletion,
+  getNvidiaConfig,
+  type ChatMessage as NvidiaChatMessage,
+} from '@/lib/nvidia-llm'
 
 export async function POST(request: NextRequest) {
   try {
@@ -120,6 +125,67 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const nvidiaConfig = getNvidiaConfig()
+    if (nvidiaConfig) {
+      const sanitizedMessages: NvidiaChatMessage[] = messages
+        .filter(
+          (m): m is { role: string; content: string } =>
+            typeof m?.role === 'string' && typeof m?.content === 'string',
+        )
+        .filter((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'system')
+        .map((m) => ({
+          role: m.role as 'user' | 'assistant' | 'system',
+          content: m.content.trim(),
+        }))
+        .filter((m) => m.content.length > 0)
+        .slice(-20)
+
+      if (sanitizedMessages.length === 0) {
+        return NextResponse.json(
+          { error: 'Invalid messages: at least one non-empty message is required.' },
+          { status: 400 },
+        )
+      }
+
+      const systemPrompt = process.env.LLM_SYSTEM_PROMPT?.trim()
+      const hasSystem = sanitizedMessages.some((m) => m.role === 'system')
+      const finalMessages: NvidiaChatMessage[] =
+        systemPrompt && !hasSystem
+          ? [{ role: 'system', content: systemPrompt }, ...sanitizedMessages]
+          : sanitizedMessages
+
+      const controller = new AbortController()
+      const timeoutMs = Number(process.env.LLM_TIMEOUT_MS ?? '45000')
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 45000,
+      )
+
+      try {
+        const aiMessage = await callNvidiaChatCompletion(finalMessages, {
+          signal: controller.signal,
+        })
+        clearTimeout(timeoutId)
+
+        await persistUserAndAssistant(aiMessage)
+        return NextResponse.json({ message: aiMessage, provider: 'nvidia', model: nvidiaConfig.model })
+      } catch (err: unknown) {
+        clearTimeout(timeoutId)
+        const error = err as { name?: string; message?: string }
+        if (error?.name === 'AbortError') {
+          return NextResponse.json(
+            { error: 'Request timeout. NVIDIA LLM took too long to respond.' },
+            { status: 504 },
+          )
+        }
+        console.error('NVIDIA LLM error:', error?.message ?? err)
+        return NextResponse.json(
+          { error: error?.message || 'Failed to get AI response from NVIDIA.' },
+          { status: 502 },
+        )
+      }
+    }
+
     const httpBase = getLlmHttpBaseUrl()
     if (httpBase) {
       const userMessageContent = messages[messages.length - 1]?.content
@@ -222,7 +288,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            'No LLM configured. Set NEXT_PUBLIC_LLM_API_URL (or LLM_HTTP_API_BASE_URL) for the HTTP LLM API, or NEXT_PUBLIC_BACKEND_API_URL + LLM_API_KEY for the legacy backend.',
+            'No LLM configured. Set NVIDIA_API_KEY (preferred), NEXT_PUBLIC_LLM_API_URL (or LLM_HTTP_API_BASE_URL) for the HTTP LLM API, or NEXT_PUBLIC_BACKEND_API_URL + LLM_API_KEY for the legacy backend.',
         },
         { status: 500 }
       )

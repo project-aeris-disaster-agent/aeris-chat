@@ -550,11 +550,11 @@ export function ReportIncidentModal({
       setPhoneNumber(DEFAULT_PHONE_PREFIX);
       setOtpCode("");
       setOtpStatus(null);
-      setShowVerificationPopup(Boolean(report));
+      setShowVerificationPopup(false);
       onSubmitted?.();
       setStatus({
         tone: "ok",
-        message: "Report sent to AERIS.",
+        message: "Report sent to AERIS. You can verify your phone later from Report Inbox.",
       });
     } catch (error) {
       setStatus({ tone: "error", message: (error as Error).message });
@@ -769,6 +769,26 @@ export function ReportIncidentModal({
               </p>
             )}
 
+            {submittedReport && !showVerificationPopup && (
+              <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                <p className="text-foreground">
+                  Report ID: {submittedReport.messageId ?? submittedReport.id}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Phone verification is optional and can be done later from Report Inbox.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => setShowVerificationPopup(true)}
+                >
+                  Verify phone (optional)
+                </Button>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
                 Close
@@ -796,10 +816,10 @@ export function ReportIncidentModal({
               </div>
               <div className="space-y-3 p-4">
                 <p className="text-sm text-muted-foreground">
-                  Verify now to assign your BASE proxy wallet and queue gasless minting immediately.
+                  Optional: verify your mobile number to help operators prioritize your report.
                 </p>
                 <div className="rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                  Verify later is allowed, but unverified reports are queued behind verified reports. Verified reports are processed first in first-in, first-out order.
+                  You can skip this step during an emergency. Unverified reports still appear on the dashboard.
                 </div>
                 <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                   <Input

@@ -2,6 +2,11 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { updateReport } from "@/lib/reports/store";
+import {
+  getSharedSupabaseReportById,
+  patchSharedReportPhoneVerified,
+  sharedSupabaseReportsEnabled,
+} from "@/lib/reports/shared-supabase";
 
 function generateOtpCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -28,6 +33,18 @@ export async function POST(request: NextRequest) {
       }
 
       const code = generateOtpCode();
+
+      if (sharedSupabaseReportsEnabled()) {
+        const existing = await getSharedSupabaseReportById(reportId);
+        if (existing) {
+          return NextResponse.json({
+            ok: true,
+            devOtpCode: code,
+            message: "Development OTP generated for shared report.",
+          });
+        }
+      }
+
       const report = await updateReport(reportId, anonymousId, (current) => ({
         ...current,
         verificationOtp: {
@@ -54,6 +71,19 @@ export async function POST(request: NextRequest) {
 
     if (action === "verify") {
       const otpCode = typeof body.otpCode === "string" ? body.otpCode.trim() : "";
+      const phoneNumber = typeof body.phoneNumber === "string" ? body.phoneNumber.trim() : "";
+
+      if (sharedSupabaseReportsEnabled()) {
+        const shared = await getSharedSupabaseReportById(reportId);
+        if (shared) {
+          const updated = await patchSharedReportPhoneVerified(reportId, phoneNumber);
+          if (!updated) {
+            return NextResponse.json({ error: "Unable to verify shared report." }, { status: 502 });
+          }
+          return NextResponse.json({ ok: true, report: updated });
+        }
+      }
+
       const report = await updateReport(reportId, anonymousId, (current) => {
         if (!current.verificationOtp || current.verificationOtp.code !== otpCode) {
           return current;

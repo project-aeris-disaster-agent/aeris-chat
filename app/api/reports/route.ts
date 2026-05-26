@@ -2,6 +2,12 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createReport, deleteReport, listReports } from "@/lib/reports/store";
+import {
+  createSharedSupabaseReport,
+  listSharedSupabaseReportsByAnonymousId,
+  sharedSupabaseReportsEnabled,
+} from "@/lib/reports/shared-supabase";
+import { notifyTriageForReport, triageNotifyEnabled } from "@/lib/reports/triage-notify";
 
 function isPosition(value: unknown): value is [number, number] {
   return (
@@ -11,11 +17,35 @@ function isPosition(value: unknown): value is [number, number] {
   );
 }
 
+async function hashIp(ip: string): Promise<string> {
+  const data = new TextEncoder().encode(ip + "|aeris-salt");
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  const bytes = new Uint8Array(buf);
+  return Array.from(bytes.slice(0, 8))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function getClientIp(request: NextRequest) {
+  return (
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "unknown"
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const anonymousId = request.nextUrl.searchParams.get("anonymousId");
     if (!anonymousId) {
       return NextResponse.json({ error: "anonymousId is required" }, { status: 400 });
+    }
+
+    if (sharedSupabaseReportsEnabled()) {
+      const shared = await listSharedSupabaseReportsByAnonymousId(anonymousId);
+      if (shared.length > 0) {
+        return NextResponse.json({ reports: shared });
+      }
     }
 
     const reports = await listReports(anonymousId);
@@ -44,6 +74,34 @@ export async function POST(request: NextRequest) {
     }
     if (!anonymousId) {
       return NextResponse.json({ error: "anonymousId is required" }, { status: 400 });
+    }
+
+    const ipHash = await hashIp(getClientIp(request));
+
+    if (sharedSupabaseReportsEnabled()) {
+      try {
+        const report = await createSharedSupabaseReport({
+          category,
+          description,
+          position: body.position,
+          anonymousId,
+          sessionId: typeof body.sessionId === "string" ? body.sessionId : undefined,
+          locationAccuracyM:
+            typeof body.locationAccuracyM === "number" && Number.isFinite(body.locationAccuracyM)
+              ? body.locationAccuracyM
+              : undefined,
+          metadata: body.metadata && typeof body.metadata === "object" ? body.metadata : {},
+          ipHash,
+        });
+
+        if (triageNotifyEnabled() && report?.id) {
+          void notifyTriageForReport(report.id);
+        }
+
+        return NextResponse.json({ report }, { status: 201 });
+      } catch (error) {
+        console.error("Shared Supabase report insert failed, falling back to local store:", error);
+      }
     }
 
     const report = await createReport({
