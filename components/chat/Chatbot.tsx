@@ -32,9 +32,39 @@ import { EmergencyHotlinesModal } from "@/components/chat/EmergencyHotlinesModal
 import { DonationWalletModal } from "@/components/chat/DonationWalletModal";
 import { ReportIncidentModal } from "@/components/chat/ReportIncidentModal";
 import { ReportInboxModal } from "@/components/chat/ReportInboxModal";
-import { MessageList } from "@/components/chat/MessageList";
+import { MessageList, type DraftEntry } from "@/components/chat/MessageList";
+import type { IncidentDraftCardStatus } from "@/components/chat/IncidentDraftCard";
 import { useChat } from "@/hooks/useChat";
 import { useSessions } from "@/hooks/useSessions";
+import { detectIncidentIntent, type DraftIncidentReport } from "@/lib/incidents/intent";
+
+type DraftApiResponse = {
+  matched: boolean;
+  draft: DraftIncidentReport | null;
+  draftId?: string;
+  missingSlots?: string[];
+  nextQuestion?: string | null;
+};
+
+async function fetchIncidentDraft(input: {
+  message: string;
+  sessionId: string | null;
+  userMessageId: string;
+  anonymousId: string;
+}): Promise<DraftApiResponse | null> {
+  try {
+    const res = await fetch("/api/incidents/draft", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json().catch(() => ({}))) as DraftApiResponse;
+    return body;
+  } catch {
+    return null;
+  }
+}
 
 export function Chatbot() {
 
@@ -77,6 +107,15 @@ export function Chatbot() {
   const [messageInput, setMessageInput] = React.useState("");
   const [currentSessionId, setCurrentSessionId] = React.useState<string | null>(null);
   const [isSending, setIsSending] = React.useState(false);
+  const [draftsByUserMessageId, setDraftsByUserMessageId] = React.useState<
+    Record<string, DraftEntry>
+  >({});
+  // Phase 5.1: queue of user-message contents that the intent heuristic flagged
+  // as incident-worthy. As soon as each matching user message surfaces from
+  // the messages query, we kick off /api/incidents/draft with its id so the
+  // draft is persisted server-side.
+  const [pendingIntents, setPendingIntents] = React.useState<string[]>([]);
+  const draftFetchedForMessageId = React.useRef<Set<string>>(new Set());
   const [prefersReducedMotion, setPrefersReducedMotion] = React.useState(false);
 
   // Chat hooks
@@ -87,6 +126,158 @@ export function Chatbot() {
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Phase 5.1: rehydrate existing open drafts when the session changes.
+  React.useEffect(() => {
+    if (!currentSessionId) return;
+    let cancelled = false;
+    void fetch(`/api/incidents/drafts?sessionId=${encodeURIComponent(currentSessionId)}`, {
+      cache: 'no-store',
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        if (cancelled || !body || !Array.isArray(body.drafts)) return;
+        const next: Record<string, DraftEntry> = {};
+        for (const row of body.drafts) {
+          if (row.status !== 'open') continue;
+          if (!row.user_message_id || !row.draft) continue;
+          next[row.user_message_id] = {
+            draft: row.draft as DraftIncidentReport,
+            status: { kind: 'idle' },
+            draftId: row.id,
+            missingSlots: Array.isArray(row.missing_slots) ? row.missing_slots : [],
+            nextQuestion: row.next_question ?? null,
+          };
+          draftFetchedForMessageId.current.add(row.user_message_id);
+        }
+        if (Object.keys(next).length > 0) {
+          setDraftsByUserMessageId((prev) => ({ ...next, ...prev }));
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSessionId]);
+
+  // Phase 5.1: when a queued intent finally surfaces as a user message in
+  // messages, fire the draft request with that message's id so the persisted
+  // draft links back to the chat thread.
+  React.useEffect(() => {
+    if (pendingIntents.length === 0) return;
+    const remaining: string[] = [];
+    for (const content of pendingIntents) {
+      const trimmed = content.trim();
+      const match = [...messages].reverse().find(
+        (m) => m.role === 'user' && m.content.trim() === trimmed,
+      );
+      if (!match) {
+        remaining.push(content);
+        continue;
+      }
+      if (draftFetchedForMessageId.current.has(match.id)) continue;
+      draftFetchedForMessageId.current.add(match.id);
+
+      const anonymousId =
+        typeof window !== 'undefined' ? localStorage.getItem('aeris_anonymous_session_id') ?? '' : '';
+
+      void fetchIncidentDraft({
+        message: trimmed,
+        sessionId: currentSessionId,
+        userMessageId: match.id,
+        anonymousId,
+      }).then((result) => {
+        if (!result?.matched || !result.draft) return;
+        setDraftsByUserMessageId((prev) =>
+          prev[match.id]
+            ? prev
+            : {
+                ...prev,
+                [match.id]: {
+                  draft: result.draft as DraftIncidentReport,
+                  status: { kind: 'idle' },
+                  draftId: result.draftId,
+                  missingSlots: result.missingSlots ?? [],
+                  nextQuestion: result.nextQuestion ?? null,
+                },
+              },
+        );
+      });
+    }
+    if (remaining.length !== pendingIntents.length) {
+      setPendingIntents(remaining);
+    }
+  }, [messages, pendingIntents, currentSessionId]);
+
+  const handleDraftRefine = React.useCallback(
+    async (draftId: string, answer: string) => {
+      try {
+        const res = await fetch('/api/incidents/draft/refine', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ draftId, message: answer }),
+        });
+        if (!res.ok) return;
+        const body = await res.json().catch(() => ({}));
+        if (body?.cancelled) {
+          setDraftsByUserMessageId((prev) => {
+            const entry = Object.entries(prev).find(([, v]) => v.draftId === draftId);
+            if (!entry) return prev;
+            const [umid] = entry;
+            return { ...prev, [umid]: { ...prev[umid], status: { kind: 'cancelled' } } };
+          });
+          return;
+        }
+        if (!body?.draft) return;
+        setDraftsByUserMessageId((prev) => {
+          const entry = Object.entries(prev).find(([, v]) => v.draftId === draftId);
+          if (!entry) return prev;
+          const [umid, current] = entry;
+          return {
+            ...prev,
+            [umid]: {
+              ...current,
+              draft: body.draft.draft as DraftIncidentReport,
+              missingSlots: Array.isArray(body.missingSlots) ? body.missingSlots : [],
+              nextQuestion: body.nextQuestion ?? null,
+            },
+          };
+        });
+      } catch {
+        // ignore
+      }
+    },
+    [],
+  );
+
+  const handleDraftStatusChange = React.useCallback(
+    (userMessageId: string, status: IncidentDraftCardStatus) => {
+      let draftId: string | undefined;
+      setDraftsByUserMessageId((prev) => {
+        const existing = prev[userMessageId];
+        if (!existing) return prev;
+        draftId = existing.draftId;
+        return { ...prev, [userMessageId]: { ...existing, status } };
+      });
+      if (status.kind === 'submitted') {
+        setReportInboxRefreshKey((k) => k + 1);
+        if (draftId) {
+          void fetch(`/api/incidents/drafts?id=${encodeURIComponent(draftId)}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ status: 'confirmed', confirmedReportId: status.reportId }),
+          }).catch(() => undefined);
+        }
+      } else if (status.kind === 'cancelled' && draftId) {
+        void fetch(`/api/incidents/drafts?id=${encodeURIComponent(draftId)}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ status: 'cancelled' }),
+        }).catch(() => undefined);
+      }
+    },
+    [],
+  );
 
   React.useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -241,6 +432,11 @@ export function Chatbot() {
       
       if (sessionId) {
         console.log('Sending message to session:', sessionId);
+        const intent = detectIncidentIntent(messageToSend);
+        if (intent.match) {
+          setPendingIntents((prev) => [...prev, messageToSend]);
+        }
+
         await sendMessage(messageToSend, sessionId);
         console.log('Message sent successfully');
         triggerBackgroundAnimation();
@@ -685,7 +881,25 @@ export function Chatbot() {
                 <div className="pt-2 md:pt-2 lg:pt-3 pb-4 md:pb-6 lg:pb-8">
                   <div className="space-y-2 md:space-y-3 overflow-hidden p-2 md:p-3 lg:p-4">
                     {messages.length > 0 ? (
-                      <MessageList messages={messages} isLoading={messagesLoading} selectedColors={selectedColors} />
+                      <MessageList
+                        messages={messages}
+                        isLoading={messagesLoading}
+                        selectedColors={selectedColors}
+                        sessionId={currentSessionId}
+                        draftsByUserMessageId={draftsByUserMessageId}
+                        onDraftStatusChange={handleDraftStatusChange}
+                        onDraftRefine={handleDraftRefine}
+                        onOpenHotlines={() => setIsHotlinesModalOpen(true)}
+                        onOpenReportInbox={() => setIsReportInboxOpen(true)}
+                        onStatusUpdate={(reportId) => {
+                          if (!reportId) return;
+                          setMessageInput((prev) =>
+                            prev
+                              ? prev
+                              : `Status update for report ${reportId.slice(0, 8)}: `,
+                          );
+                        }}
+                      />
                     ) : null}
                     <div ref={messagesEndRef} />
                   </div>

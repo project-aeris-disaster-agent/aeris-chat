@@ -9,7 +9,8 @@
     "lint": "next lint",
     "clean": "node -e \"const fs=require('fs');if(fs.existsSync('.next'))fs.rmSync('.next',{recursive:true,force:true})\"",
     "dev:clean": "npm run clean && next dev",
-    "smoke:llm": "node scripts/test-llm.mjs"
+    "smoke:llm": "node scripts/test-llm.mjs",
+    "smoke:intent": "npx tsx scripts/test-incident-intent.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
