@@ -5,7 +5,7 @@ import { X, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
-import banner2aeris from "@/assets/banner2aeris.jpg";
+import aerisAdsBanner from "@/assets/ads_v1_2026.gif";
 
 interface DonationWalletModalProps {
   isOpen: boolean;
@@ -96,7 +96,7 @@ export function DonationWalletModal({ isOpen, onClose }: DonationWalletModalProp
           <div className="p-4 md:p-6 space-y-6">
             <div className="overflow-hidden rounded-lg border border-border bg-card">
               <img
-                src={typeof banner2aeris === "string" ? banner2aeris : banner2aeris.src}
+                src={typeof aerisAdsBanner === "string" ? aerisAdsBanner : aerisAdsBanner.src}
                 alt="Para sa impormasyon at tulong — disaster information and relief"
                 className="h-auto w-full max-h-32 object-contain object-center md:max-h-36"
               />

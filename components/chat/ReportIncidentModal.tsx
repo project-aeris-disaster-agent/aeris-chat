@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getAnonymousSessionId } from "@/lib/utils/anonymous-session";
 import { cn } from "@/lib/utils";
-import banner2aeris from "@/assets/banner2aeris.jpg";
+import aerisAdsBanner from "@/assets/ads_v1_2026.gif";
 
 type ReportIncidentModalProps = {
   isOpen: boolean;
@@ -658,7 +658,7 @@ export function ReportIncidentModal({
           <form onSubmit={submitReport} className="space-y-4 overflow-y-auto p-4">
             <div className="-mx-4 -mt-4 mb-1 overflow-hidden border-b border-border">
               <img
-                src={typeof banner2aeris === "string" ? banner2aeris : banner2aeris.src}
+                src={typeof aerisAdsBanner === "string" ? aerisAdsBanner : aerisAdsBanner.src}
                 alt="Para sa impormasyon at tulong — disaster information and relief"
                 className="h-auto w-full object-cover object-center"
               />
