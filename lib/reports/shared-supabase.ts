@@ -4,6 +4,7 @@ type SharedReport = {
   category: string;
   description: string;
   position: [number, number];
+  photoUrl?: string;
   createdAt: string;
   confirmations: number;
   verificationStatus?: string;
@@ -79,6 +80,9 @@ function toSharedReport(row: Record<string, unknown>): SharedReport {
     category: String(row.category),
     description: String(row.description),
     position: [Number(row.longitude), Number(row.latitude)],
+    photoUrl:
+      (typeof row.photo_url === "string" && row.photo_url ? row.photo_url : undefined) ??
+      (typeof metadata.photoUrl === "string" ? metadata.photoUrl : undefined),
     createdAt: String(row.created_at),
     confirmations: Number(row.confirmations ?? 0),
     verificationStatus:
@@ -111,6 +115,7 @@ export async function createSharedSupabaseReport(input: {
   anonymousId: string;
   sessionId?: string;
   locationAccuracyM?: number;
+  photoUrl?: string;
   metadata?: Record<string, unknown>;
   ipHash?: string;
 }): Promise<SharedReport> {
@@ -145,11 +150,13 @@ export async function createSharedSupabaseReport(input: {
     onchain_mint_status: "not_started",
     ai_priority: "pending",
     dedupe_hash: dedupeHash,
+    photo_url: input.photoUrl ?? null,
     metadata: {
       ...input.metadata,
       messageId: reportMessageId,
       anonymousId: input.anonymousId,
       sessionId: input.sessionId ?? null,
+      photoUrl: input.photoUrl ?? null,
       onchain: {
         gasless: true,
         network: "base-mainnet",
@@ -167,8 +174,10 @@ export async function createSharedSupabaseReport(input: {
 
   if (!res.ok) {
     const errText = await res.clone().text().catch(() => "");
-    if (/ai_priority|dedupe_hash|schema cache/i.test(errText)) {
-      const { ai_priority, dedupe_hash, ...fallbackPayload } = insertPayload;
+    if (/ai_priority|dedupe_hash|photo_url|schema cache/i.test(errText)) {
+      // The photoUrl is still preserved inside metadata above, so dropping the
+      // dedicated photo_url column here does not lose the evidence link.
+      const { ai_priority, dedupe_hash, photo_url, ...fallbackPayload } = insertPayload;
       res = await fetch(`${cfg.url}/rest/v1/disaster_reports?select=*`, {
         method: "POST",
         headers: { ...headers(cfg.serviceKey), prefer: "return=representation" },

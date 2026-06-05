@@ -5,7 +5,7 @@ import Image from "next/image";
 
 import { CanvasRevealEffect } from "@/components/ui/canvas-effect";
 
-import { AlertCircle, MessageCircle, Phone, Plus, Send, X } from "lucide-react";
+import { AlertCircle, Camera, MessageCircle, Send, X } from "lucide-react";
 
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -15,13 +15,13 @@ import { Input } from "@/components/ui/input";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 
-import { ColorSlider, AnimationSettings } from "@/components/ui/color-slider";
+import type { AnimationSettings } from "@/components/ui/color-slider";
 
 import { LoadingBlob } from "@/components/ui/loading-blob";
 
 import aerisLogoLockup from "@/assets/AERIS Logo@5x.png";
+import adsBanner from "@/assets/ads_v1_2026.gif";
 import AERISChar from "@/assets/AERIS_char.svg";
 
 import { SOSButton } from "@/components/chat/SOSButton";
@@ -80,9 +80,9 @@ export function Chatbot() {
 
   const [mousePosition, setMousePosition] = React.useState<{ x: number; y: number } | null>(null);
 
-  const [selectedColors, setSelectedColors] = React.useState<number[][]>([[135, 206, 250]]);
+  const selectedColors: number[][] = [[135, 206, 250]];
 
-  const [animationSettings, setAnimationSettings] = React.useState<AnimationSettings>({
+  const animationSettings: AnimationSettings = {
     animationSpeed: 0.5,
     opacityMin: 0.5,
     opacityMax: 1.0,
@@ -91,10 +91,9 @@ export function Chatbot() {
     saturation: 1.0,
     contrast: 1.0,
     glow: 0.0,
-  });
+  };
 
   const [errorPopup, setErrorPopup] = React.useState<{ message: string; detail?: string } | null>(null);
-  const [showScrollButton, setShowScrollButton] = React.useState(false);
   const [animationKey, setAnimationKey] = React.useState(0); // Key to force animation restart
   const [animationOpacity, setAnimationOpacity] = React.useState(1); // Control fade-out
 
@@ -103,10 +102,11 @@ export function Chatbot() {
   const animationRafRef = React.useRef<number | null>(null);
   const animationTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const fadeOutTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  const mainButtonsRef = React.useRef<HTMLDivElement>(null);
   const [messageInput, setMessageInput] = React.useState("");
   const [currentSessionId, setCurrentSessionId] = React.useState<string | null>(null);
   const [isSending, setIsSending] = React.useState(false);
+  const [pendingPhotoFile, setPendingPhotoFile] = React.useState<File | null>(null);
+  const photoInputRef = React.useRef<HTMLInputElement>(null);
   const [draftsByUserMessageId, setDraftsByUserMessageId] = React.useState<
     Record<string, DraftEntry>
   >({});
@@ -317,10 +317,12 @@ export function Chatbot() {
     phoneLink.click();
   };
 
-  const handleScrollToMainButtons = React.useCallback(() => {
-    if (mainButtonsRef.current) {
-      mainButtonsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+  const handlePhotoCaptured = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !file.type.startsWith("image/")) return;
+    setPendingPhotoFile(file);
+    setIsReportModalOpen(true);
   }, []);
 
   const triggerBackgroundAnimation = React.useCallback(() => {
@@ -590,26 +592,6 @@ export function Chatbot() {
     };
   }, []);
 
-  React.useEffect(() => {
-    const mainButtonsEl = mainButtonsRef.current;
-    if (!mainButtonsEl) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        setShowScrollButton(!entry.isIntersecting);
-      },
-      {
-        root: containerRef.current ?? undefined,
-        threshold: 0.6,
-      }
-    );
-
-    observer.observe(mainButtonsEl);
-
-    return () => observer.disconnect();
-  }, []);
-
   return (
     <>
       <div ref={containerRef} className={`relative flex-1 h-full w-full flex flex-col overflow-hidden transition-all duration-300 ${
@@ -647,7 +629,7 @@ export function Chatbot() {
         )}
       </AnimatePresence>
 
-      {/* SOS Button & Scroll Control - Top Left */}
+      {/* SOS Button - Top Left */}
       <div 
         className="fixed top-safe left-safe z-[9999] flex items-center gap-2 md:top-4 md:left-4"
         style={{ 
@@ -656,31 +638,9 @@ export function Chatbot() {
         }}
       >
         <SOSButton isActive={isSOSActive} onToggleSOS={() => setIsSOSActive((prev) => !prev)} />
-        <AnimatePresence>
-          {showScrollButton && (
-            <motion.div
-              key="scroll-phone-button"
-              initial={{ opacity: 0, scale: 0.8, y: -6 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.8, y: -6 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-            >
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={handleScrollToMainButtons}
-                className="h-10 w-10 md:h-11 md:w-11 rounded-full border-2 border-red-500/50 bg-red-500/90 text-white shadow-lg transition hover:bg-red-500 focus-visible:ring-red-500"
-                aria-label="Scroll to emergency controls"
-              >
-                <Phone className="h-5 w-5" />
-              </Button>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
-      {/* Theme Toggle & Color Picker - Top Right */}
+      {/* Top right controls */}
       <div 
         className="absolute top-safe right-safe z-30 flex flex-wrap gap-2 justify-end md:top-4 md:right-4"
         style={{ 
@@ -698,13 +658,6 @@ export function Chatbot() {
         >
           <MessageCircle className="h-5 w-5 md:h-4 md:w-4" />
         </Button>
-        <ColorSlider
-          selectedColors={selectedColors}
-          onColorChange={setSelectedColors}
-          animationSettings={animationSettings}
-          onAnimationSettingsChange={setAnimationSettings}
-        />
-        <ThemeToggle />
       </div>
 
       <div
@@ -832,11 +785,19 @@ export function Chatbot() {
                     alt="A.E.R.I.S."
                     width={4587}
                     height={1214}
-                    className="h-10 w-auto max-w-[min(100%,320px)] object-contain sm:h-11 md:h-8 lg:h-10"
+                    className="h-7 w-auto max-w-[min(100%,224px)] object-contain sm:h-8 md:h-[22.4px] lg:h-7"
                   />
-                  <p className="text-xs md:text-[10px] lg:text-xs mt-0.5 md:mt-0 text-muted-foreground text-center leading-tight">
+                  <p className="text-[8.4px] md:text-[7px] lg:text-[8.4px] mt-0.5 md:mt-0 text-muted-foreground text-center leading-tight">
                     Autonomous Emergency Response Intel System
                   </p>
+                  <Image
+                    src={adsBanner}
+                    alt="Advertisement"
+                    width={800}
+                    height={48}
+                    unoptimized
+                    className="mt-1.5 md:mt-1 w-full max-w-[min(100%,320px)] h-auto object-contain"
+                  />
                 </div>
               </div>
             )}
@@ -844,7 +805,7 @@ export function Chatbot() {
             <ScrollArea className="flex-1 w-full overflow-auto min-h-0">
               <div className="py-1 md:py-0.5">
                 {/* Action Buttons */}
-                <div ref={mainButtonsRef} className="max-w-5xl mx-auto mt-3 sm:mt-4 md:mt-1.5 lg:mt-2 px-2 md:px-3 lg:px-4">
+                <div className="max-w-5xl mx-auto mt-3 sm:mt-4 md:mt-1.5 lg:mt-2 px-2 md:px-3 lg:px-4">
                   <div className="flex flex-col gap-3 sm:flex-row md:gap-1.5 lg:gap-2">
                     <GradientButton 
                       className="w-full sm:flex-1 md:text-xs lg:text-sm py-2 md:py-1.5 lg:py-2"
@@ -957,16 +918,25 @@ export function Chatbot() {
                     onChange={(e) => setMessageInput(e.target.value)}
                     disabled={isSending || messagesLoading}
                   />
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handlePhotoCaptured}
+                  />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     className="absolute left-1 md:left-1 top-1/2 -translate-y-1/2 h-10 w-10 md:h-7 md:w-7 lg:h-8 lg:w-8 rounded-sm min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0"
-                    onClick={handleNewSession}
+                    onClick={() => photoInputRef.current?.click()}
                     disabled={isSending || messagesLoading}
+                    aria-label="Take photo for report"
                   >
-                    <Plus className="h-5 w-5 md:h-4 md:w-4 lg:h-4 lg:w-4" />
-                    <span className="sr-only">New Chat</span>
+                    <Camera className="h-5 w-5 md:h-4 md:w-4 lg:h-4 lg:w-4" />
+                    <span className="sr-only">Take photo for report</span>
                   </Button>
                   <Button
                     type="submit"
@@ -1016,6 +986,8 @@ export function Chatbot() {
         onClose={() => setIsReportModalOpen(false)}
         sessionId={currentSessionId}
         onSubmitted={() => setReportInboxRefreshKey((key) => key + 1)}
+        initialPhotoFile={pendingPhotoFile}
+        onInitialPhotoConsumed={() => setPendingPhotoFile(null)}
       />
 
       <ReportInboxModal

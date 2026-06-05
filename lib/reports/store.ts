@@ -80,6 +80,7 @@ export async function createReport(input: {
   anonymousId: string;
   sessionId?: string;
   locationAccuracyM?: number;
+  photoUrl?: string;
   metadata?: Record<string, unknown>;
 }): Promise<DisasterReport> {
   const store = await readStore();
@@ -94,6 +95,7 @@ export async function createReport(input: {
     anonymousId: input.anonymousId,
     sessionId: input.sessionId,
     locationAccuracyM: input.locationAccuracyM,
+    photoUrl: input.photoUrl,
     createdAt,
     confirmations: 0,
     confidence: 0,

@@ -17,6 +17,18 @@ function isPosition(value: unknown): value is [number, number] {
   );
 }
 
+function sanitizePhotoUrl(value: unknown): string | undefined {
+  // Per the Dashboard intake contract, photoUrl must be an http(s) URL only.
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 async function hashIp(ip: string): Promise<string> {
   const data = new TextEncoder().encode(ip + "|aeris-salt");
   const buf = await crypto.subtle.digest("SHA-256", data);
@@ -77,6 +89,7 @@ export async function POST(request: NextRequest) {
     }
 
     const ipHash = await hashIp(getClientIp(request));
+    const photoUrl = sanitizePhotoUrl(body.photoUrl);
 
     if (sharedSupabaseReportsEnabled()) {
       try {
@@ -90,6 +103,7 @@ export async function POST(request: NextRequest) {
             typeof body.locationAccuracyM === "number" && Number.isFinite(body.locationAccuracyM)
               ? body.locationAccuracyM
               : undefined,
+          photoUrl,
           metadata: body.metadata && typeof body.metadata === "object" ? body.metadata : {},
           ipHash,
         });
@@ -114,6 +128,7 @@ export async function POST(request: NextRequest) {
         typeof body.locationAccuracyM === "number" && Number.isFinite(body.locationAccuracyM)
           ? body.locationAccuracyM
           : undefined,
+      photoUrl,
       metadata: body.metadata && typeof body.metadata === "object" ? body.metadata : {},
     });
 

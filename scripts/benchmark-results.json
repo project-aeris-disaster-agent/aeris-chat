@@ -1,0 +1,98 @@
+{
+  "ranAt": "2026-05-27T16:25:08.760Z",
+  "timeoutMs": 60000,
+  "maxTokens": 1024,
+  "winner": "meta/llama-4-maverick-17b-128e-instruct",
+  "results": [
+    {
+      "model": "meta/llama-4-maverick-17b-128e-instruct",
+      "ok": true,
+      "latencyMs": 2189,
+      "status": 200,
+      "error": null,
+      "contentPreview": "## Situation Brief - Storm: None in PAR - Signal/Risk: Elevated rainfall risk - Exposure: Metro Manila is under elevated rainfall risk with heavy showers possible in the next 24 hours [Open-Meteo forecast]. - Top 3 Actions: 1) Monitor weather updates from PAGASA. 2) Prepare ",
+      "wordCount": 69,
+      "score": 100,
+      "checks": {
+        "hasBrief": true,
+        "hasDisclaimer": true,
+        "hasCitation": true,
+        "under60s": true,
+        "under25s": true,
+        "reasonableLength": true
+      }
+    },
+    {
+      "model": "nvidia/nemotron-3-nano-30b-a3b",
+      "ok": true,
+      "latencyMs": 3945,
+      "status": 200,
+      "error": null,
+      "contentPreview": "## Situation Brief - **Storm:** No named typhoon inside PAR per current GDACS feed [GDACS TC feed] - **Signal/Risk:** Elevated rainfall risk – national verdict “Elevated rainfall risk” with a Level 2 warning for NCR [national verdict] - **Exposure:** Metro Manila (NCR) – heav",
+      "wordCount": 133,
+      "score": 100,
+      "checks": {
+        "hasBrief": true,
+        "hasDisclaimer": true,
+        "hasCitation": true,
+        "under60s": true,
+        "under25s": true,
+        "reasonableLength": true
+      }
+    },
+    {
+      "model": "mistralai/mistral-medium-3.5-128b",
+      "ok": true,
+      "latencyMs": 3995,
+      "status": 200,
+      "error": null,
+      "contentPreview": "## Situation Brief - Storm: none in PAR [GDACS TC feed] - Signal/Risk: Elevated rainfall risk (national severity score 2) [national verdict] - Exposure: Metro Manila (NCR) – heavy showers possible next 24h [Open-Meteo forecast] - Top 3 Actions: 1) Monitor PAGASA updates for rai",
+      "wordCount": 75,
+      "score": 100,
+      "checks": {
+        "hasBrief": true,
+        "hasDisclaimer": true,
+        "hasCitation": true,
+        "under60s": true,
+        "under25s": true,
+        "reasonableLength": true
+      }
+    },
+    {
+      "model": "meta/llama-3.3-70b-instruct",
+      "ok": true,
+      "latencyMs": 5776,
+      "status": 200,
+      "error": null,
+      "contentPreview": "## Situation Brief - Storm: none in PAR - Signal/Risk: Elevated rainfall risk - Exposure: Metro Manila, NCR - heavy showers possible next 24h [Open-Meteo forecast] - Top 3 Actions: 1) Monitor updates from PAGASA and NDRRMC for potential flood and landslide warnings 2) Prepar",
+      "wordCount": 80,
+      "score": 100,
+      "checks": {
+        "hasBrief": true,
+        "hasDisclaimer": true,
+        "hasCitation": true,
+        "under60s": true,
+        "under25s": true,
+        "reasonableLength": true
+      }
+    },
+    {
+      "model": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+      "ok": true,
+      "latencyMs": 40482,
+      "status": 200,
+      "error": null,
+      "contentPreview": "",
+      "wordCount": 0,
+      "score": 10,
+      "checks": {
+        "hasBrief": false,
+        "hasDisclaimer": false,
+        "hasCitation": false,
+        "under60s": true,
+        "under25s": false,
+        "reasonableLength": false
+      }
+    }
+  ]
+}

@@ -5,9 +5,17 @@ export type ChatMessage = {
   content: string;
 };
 
+const DEFAULT_MODEL = "meta/llama-3.3-70b-instruct";
+const DEFAULT_MAX_TOKENS = 2048;
+
+export function getDefaultLlmTimeoutMs(): number {
+  const ms = Number(process.env.LLM_TIMEOUT_MS ?? "55000");
+  return Number.isFinite(ms) && ms > 0 ? ms : 55_000;
+}
+
 export function getNvidiaConfig() {
   const apiKey = process.env.NVIDIA_API_KEY?.trim();
-  const model = process.env.LLM_MODEL?.trim() || "moonshotai/kimi-k2.6";
+  const model = process.env.LLM_MODEL?.trim() || DEFAULT_MODEL;
   if (!apiKey) return null;
   return { apiKey, model };
 }
@@ -66,7 +74,7 @@ export async function callNvidiaChatCompletion(
   }
 
   const envTemperature = Number(process.env.LLM_TEMPERATURE ?? "0.7");
-  const envMaxTokens = Number(process.env.LLM_MAX_TOKENS ?? "4096");
+  const envMaxTokens = Number(process.env.LLM_MAX_TOKENS ?? String(DEFAULT_MAX_TOKENS));
   const temperature = Number.isFinite(options.temperature)
     ? (options.temperature as number)
     : Number.isFinite(envTemperature)
@@ -76,7 +84,7 @@ export async function callNvidiaChatCompletion(
     ? (options.maxTokens as number)
     : Number.isFinite(envMaxTokens)
       ? envMaxTokens
-      : 4096;
+      : DEFAULT_MAX_TOKENS;
 
   const body: Record<string, unknown> = {
     model: config.model,
@@ -96,16 +104,37 @@ export async function callNvidiaChatCompletion(
     body.tool_choice = options.toolChoice ?? "auto";
   }
 
-  const response = await fetch(NVIDIA_CHAT_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(body),
-    signal: options.signal,
-  });
+  const timeoutMs = getDefaultLlmTimeoutMs();
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+
+  let signal = options.signal;
+  if (signal) {
+    signal.addEventListener("abort", () => timeoutController.abort(), { once: true });
+  } else {
+    signal = timeoutController.signal;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(NVIDIA_CHAT_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`NVIDIA LLM request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const data = (await response.json().catch(() => ({}))) as {
     choices?: Array<{
@@ -142,7 +171,7 @@ export async function callNvidiaWithTools(
   }
 
   const envTemperature = Number(process.env.LLM_TEMPERATURE ?? "0.7");
-  const envMaxTokens = Number(process.env.LLM_MAX_TOKENS ?? "4096");
+  const envMaxTokens = Number(process.env.LLM_MAX_TOKENS ?? String(DEFAULT_MAX_TOKENS));
   const temperature = Number.isFinite(options.temperature)
     ? (options.temperature as number)
     : Number.isFinite(envTemperature)
@@ -152,7 +181,7 @@ export async function callNvidiaWithTools(
     ? (options.maxTokens as number)
     : Number.isFinite(envMaxTokens)
       ? envMaxTokens
-      : 4096;
+      : DEFAULT_MAX_TOKENS;
 
   const body: Record<string, unknown> = {
     model: config.model,
@@ -172,16 +201,37 @@ export async function callNvidiaWithTools(
     body.response_format = { type: "json_object" };
   }
 
-  const response = await fetch(NVIDIA_CHAT_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(body),
-    signal: options.signal,
-  });
+  const timeoutMs = getDefaultLlmTimeoutMs();
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+
+  let signal = options.signal;
+  if (signal) {
+    signal.addEventListener("abort", () => timeoutController.abort(), { once: true });
+  } else {
+    signal = timeoutController.signal;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(NVIDIA_CHAT_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`NVIDIA LLM request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const data = (await response.json().catch(() => ({}))) as {
     choices?: Array<{

@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { LocateFixed, Search, X } from "lucide-react";
+import { ImagePlus, Loader2, LocateFixed, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getAnonymousSessionId } from "@/lib/utils/anonymous-session";
@@ -14,6 +14,8 @@ type ReportIncidentModalProps = {
   onClose: () => void;
   sessionId: string | null;
   onSubmitted?: () => void;
+  initialPhotoFile?: File | null;
+  onInitialPhotoConsumed?: () => void;
 };
 
 const CATEGORIES = [
@@ -68,6 +70,52 @@ const LocationMapPicker = dynamic(
 function formatCoordinatesLabel(position: [number, number]): string {
   const [longitude, latitude] = position;
   return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+}
+
+// Downscale + re-encode the image on the client to keep uploads small (free-tier
+// friendly) and to strip EXIF/GPS metadata. Animated GIFs are passed through
+// untouched so we don't flatten them to a single frame.
+async function compressImage(file: File, maxDim = 1600, quality = 0.7): Promise<File> {
+  if (file.type === "image/gif") return file;
+
+  try {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("Failed to read image"));
+      reader.readAsDataURL(file);
+    });
+
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new window.Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Failed to decode image"));
+      img.src = dataUrl;
+    });
+
+    const scale = Math.min(1, maxDim / Math.max(image.width, image.height));
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(image, 0, 0, width, height);
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((result) => resolve(result), "image/jpeg", quality),
+    );
+    if (!blob) return file;
+
+    const baseName = file.name.replace(/\.[^.]+$/, "") || "evidence";
+    return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" });
+  } catch {
+    // If anything goes wrong, fall back to the original file; the server still
+    // validates type and size.
+    return file;
+  }
 }
 
 async function getBrowserLocation(): Promise<DetectedLocation | null> {
@@ -310,6 +358,8 @@ export function ReportIncidentModal({
   onClose,
   sessionId,
   onSubmitted,
+  initialPhotoFile,
+  onInitialPhotoConsumed,
 }: ReportIncidentModalProps) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [status, setStatus] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
@@ -326,7 +376,65 @@ export function ReportIncidentModal({
   const [searchingLocation, setSearchingLocation] = useState(false);
   const [showVerificationPopup, setShowVerificationPopup] = useState(false);
   const [redetecting, setRedetecting] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const isPhoneNumberReady = phoneNumber.replace(/\D/g, "").length >= 11;
+
+  const clearPhoto = useCallback(() => {
+    setPhotoPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+    setPhotoUrl(null);
+    setPhotoError(null);
+  }, []);
+
+  const uploadPhoto = useCallback(async (file: File) => {
+    setPhotoError(null);
+    setPhotoUploading(true);
+    try {
+      const compressed = await compressImage(file);
+      const formData = new FormData();
+      formData.append("file", compressed);
+      formData.append("anonymousId", getAnonymousSessionId());
+
+      const response = await fetch("/api/reports/photo", {
+        method: "POST",
+        body: formData,
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.error ?? `Photo upload failed (${response.status})`);
+      }
+
+      setPhotoUrl(body.photoUrl);
+      setPhotoPreview((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return URL.createObjectURL(compressed);
+      });
+    } catch (error) {
+      setPhotoError((error as Error).message);
+    } finally {
+      setPhotoUploading(false);
+    }
+  }, []);
+
+  const onPhotoSelected = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        setPhotoError("Please choose an image file.");
+        return;
+      }
+      void uploadPhoto(file);
+    },
+    [uploadPhoto],
+  );
 
   const applyDetectedLocation = useCallback((location: DetectedLocation) => {
     setForm((current) => {
@@ -497,6 +605,14 @@ export function ReportIncidentModal({
     void detectLocation();
   }, [detectLocation, isOpen]);
 
+  // When the modal is opened with a photo captured from the chat camera button,
+  // upload it immediately so it appears pre-attached.
+  useEffect(() => {
+    if (!isOpen || !initialPhotoFile) return;
+    void uploadPhoto(initialPhotoFile);
+    onInitialPhotoConsumed?.();
+  }, [isOpen, initialPhotoFile, uploadPhoto, onInitialPhotoConsumed]);
+
   useEffect(() => {
     if (!form.detectedLocationLabel) return;
     setLocationQuery(form.detectedLocationLabel);
@@ -530,6 +646,7 @@ export function ReportIncidentModal({
           description: form.description,
           position,
           locationAccuracyM: form.locationAccuracyM ?? detectedLocation?.accuracyM,
+          photoUrl: photoUrl ?? undefined,
           anonymousId: getAnonymousSessionId(),
           sessionId: sessionId ?? undefined,
           metadata: {
@@ -545,6 +662,7 @@ export function ReportIncidentModal({
       }
 
       setForm(EMPTY_FORM);
+      clearPhoto();
       const report = body.report ? { id: body.report.id, messageId: body.report.messageId } : null;
       setSubmittedReport(report);
       setPhoneNumber(DEFAULT_PHONE_PREFIX);
@@ -688,6 +806,60 @@ export function ReportIncidentModal({
                 className="min-h-24 w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
               />
             </label>
+
+            <div className="space-y-2">
+              <span className="block text-sm font-medium">Photo evidence (optional)</span>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={onPhotoSelected}
+              />
+              {photoPreview ? (
+                <div className="relative w-full overflow-hidden rounded-md border border-border">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photoPreview}
+                    alt="Selected evidence preview"
+                    className="max-h-48 w-full object-cover"
+                  />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    onClick={clearPhoto}
+                    className="absolute right-2 top-2 h-8 w-8"
+                    aria-label="Remove photo"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={photoUploading}
+                  className="w-full gap-2"
+                >
+                  {photoUploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ImagePlus className="h-4 w-4" />
+                  )}
+                  {photoUploading ? "Uploading..." : "Add photo"}
+                </Button>
+              )}
+              {photoError && (
+                <p className="text-xs text-red-600 dark:text-red-400">{photoError}</p>
+              )}
+              <p className="text-[10px] leading-tight text-muted-foreground">
+                Photos help operators verify the situation. Avoid capturing faces or other
+                sensitive details when possible.
+              </p>
+            </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">

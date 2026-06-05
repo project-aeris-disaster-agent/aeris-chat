@@ -200,6 +200,22 @@ export function ReportInboxModal({ isOpen, onClose, refreshKey = 0 }: ReportInbo
                           Message ID: {report.messageId ?? report.id}
                         </p>
                         <p className="mt-3 text-sm text-foreground">{report.description}</p>
+                        {report.photoUrl ? (
+                          <a
+                            href={report.photoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-3 block w-fit overflow-hidden rounded-md border border-border"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={report.photoUrl}
+                              alt="Report evidence"
+                              loading="lazy"
+                              className="max-h-40 w-auto object-cover"
+                            />
+                          </a>
+                        ) : null}
                         <div className="mt-3 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
                           <span>{formatDate(report.createdAt)}</span>
                           <span>
