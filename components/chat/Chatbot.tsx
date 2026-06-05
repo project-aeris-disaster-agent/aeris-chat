@@ -691,11 +691,9 @@ export function Chatbot() {
 
       >
 
-        <div className="relative flex w-full flex-1 flex-col items-center justify-start gap-4 p-3 sm:p-4 lg:p-6 min-h-0">
+        <div className="relative flex w-full flex-1 flex-col items-center justify-start gap-0 p-2 sm:gap-2 sm:p-3 md:gap-4 lg:p-6 min-h-0">
 
           <AnimatePresence>
-
-            <div className="tracking-tightest flex select-none flex-col py-2 text-center text-3xl font-extrabold leading-none md:flex-col md:text-8xl lg:flex-row"></div>
 
             {hovered && !prefersReducedMotion && (
 
@@ -754,7 +752,7 @@ export function Chatbot() {
               src={typeof AERISChar === "string" ? AERISChar : AERISChar.src || "/assets/AERIS_char.svg"}
               alt=""
               aria-hidden
-              className="pointer-events-none absolute bottom-0 right-0 z-[8] h-60 w-auto max-h-[min(85vh,600px)] object-contain object-right-bottom select-none sm:h-72 md:h-[21rem] lg:h-96"
+              className="pointer-events-none absolute bottom-0 right-0 z-[8] h-40 w-auto max-h-[min(40dvh,600px)] object-contain object-right-bottom select-none sm:h-60 md:h-[21rem] md:max-h-[min(85dvh,600px)] lg:h-96"
             />
           )}
 
@@ -778,7 +776,7 @@ export function Chatbot() {
 
             {/* AERIS Branding - At Top */}
             {!isSOSActive && (
-              <div className="px-1.5 md:px-1.5 lg:px-2 py-1 md:py-0.5 lg:py-1 flex-shrink-0">
+              <div className="px-1.5 md:px-1.5 lg:px-2 py-0.5 md:py-0.5 lg:py-1 flex-shrink-0">
                 <div className="flex flex-col items-center justify-center">
                   <Image
                     src={aerisLogoLockup}
@@ -805,7 +803,7 @@ export function Chatbot() {
             <ScrollArea className="flex-1 w-full overflow-auto min-h-0">
               <div className="py-1 md:py-0.5">
                 {/* Action Buttons */}
-                <div className="max-w-5xl mx-auto mt-3 sm:mt-4 md:mt-1.5 lg:mt-2 px-2 md:px-3 lg:px-4">
+                <div className="max-w-5xl mx-auto mt-1.5 sm:mt-4 md:mt-1.5 lg:mt-2 px-2 md:px-3 lg:px-4">
                   <div className="flex flex-col gap-3 sm:flex-row md:gap-1.5 lg:gap-2">
                     <GradientButton 
                       className="w-full sm:flex-1 md:text-xs lg:text-sm py-2 md:py-1.5 lg:py-2"
@@ -871,7 +869,7 @@ export function Chatbot() {
 
             {/* bagyo.app Branding - Above Chat Input */}
             {!isSOSActive && (
-              <div className="px-3 md:px-3 lg:px-4 py-2 md:py-1.5 lg:py-2 mb-2 md:mb-1.5 flex-shrink-0">
+              <div className="px-3 md:px-3 lg:px-4 py-1 md:py-1.5 lg:py-2 mb-1 md:mb-1.5 flex-shrink-0">
                 <div className="flex flex-col items-center justify-center">
                   <Button
                     variant="default"
@@ -908,7 +906,7 @@ export function Chatbot() {
               </div>
             )}
 
-            <div className="relative mt-2 md:mt-1.5 mb-2 md:mb-2 w-full px-2 md:px-3 lg:px-4 flex-shrink-0 pb-safe-mobile">
+            <div className="relative mt-1 md:mt-1.5 mb-1 md:mb-2 w-full px-2 md:px-3 lg:px-4 flex-shrink-0">
               <form onSubmit={handleSubmit}>
                 <div className="relative max-w-4xl mx-auto">
                   <Input
@@ -957,7 +955,7 @@ export function Chatbot() {
             </div>
 
             {/* Footer */}
-            <div className="w-full px-2 md:px-3 lg:px-4 pb-2 md:pb-1.5 lg:pb-2 text-center flex-shrink-0">
+            <div className="w-full px-2 md:px-3 lg:px-4 pb-safe pb-2 md:pb-1.5 lg:pb-2 text-center flex-shrink-0">
               <p className="text-xs md:text-xs lg:text-sm text-foreground dark:text-white">
                 New Prontera™ All Rights Reserved 2025
               </p>
