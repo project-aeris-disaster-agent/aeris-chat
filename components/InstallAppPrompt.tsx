@@ -43,7 +43,9 @@ export function InstallAppPrompt() {
     } else {
       root.style.removeProperty('--install-prompt-offset')
     }
-    return () => root.style.removeProperty('--install-prompt-offset')
+    return () => {
+      root.style.removeProperty('--install-prompt-offset')
+    }
   }, [visible])
 
   useEffect(() => {
