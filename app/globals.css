@@ -79,7 +79,7 @@ body {
 
   .h-app {
     height: 100%;
-    height: 100dvh;
+    height: calc(100dvh - var(--install-prompt-offset, 0px));
   }
 
   /* Safe area insets for notched / home-indicator devices */
