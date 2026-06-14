@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import adsBanner from "@/assets/ads_v2_2026.gif";
+import bagyoLogo from "@/assets/Bagyo Logo@5x.png";
 import { HotlineTutorialPopup } from "@/components/chat/HotlineTutorialPopup";
 
 const HOTLINE_GUIDE_SEEN_KEY = "aeris_hotline_guide_seen";
@@ -183,33 +184,41 @@ export function EmergencyHotlinesModal({ isOpen, onClose }: EmergencyHotlinesMod
           </div>
 
           {/* Header */}
-          <div className="flex items-center justify-between p-4 md:p-6 border-b border-border flex-shrink-0">
-            <div>
-              <h2 className="text-xl md:text-2xl font-bold text-foreground">
-                Emergency HOTLINE Numbers
-              </h2>
-              <p className="mt-0.5 text-xs text-muted-foreground md:text-sm">
-                Naga City &amp; Bicol disaster hotlines
-              </p>
+          <div className="flex items-center justify-between gap-2 px-3 py-2.5 md:px-4 md:py-3 border-b border-border flex-shrink-0">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              <Image
+                src={bagyoLogo}
+                alt="bagyo.app"
+                width={600}
+                height={180}
+                className="h-8 w-auto shrink-0 object-contain md:h-9"
+              />
+              <div className="min-w-0">
+                <h2 className="text-base md:text-xl font-bold leading-tight text-foreground">
+                  Emergency HOTLINE Numbers
+                </h2>
+                <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground md:text-xs">
+                  Naga City &amp; Bicol disaster hotlines
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex shrink-0 items-center gap-0.5">
               <Button
                 variant="outline"
-                size="sm"
+                size="icon"
                 onClick={() => setIsTutorialOpen(true)}
-                className="gap-1.5"
+                aria-label="Who to call? Open guide"
+                className="h-7 w-7 border-muted-foreground/25"
               >
-                <HelpCircle className="h-4 w-4" />
-                <span className="hidden sm:inline">Who to call?</span>
-                <span className="sm:hidden">Guide</span>
+                <HelpCircle className="h-3.5 w-3.5" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={onClose}
-                className="h-8 w-8 md:h-10 md:w-10"
+                className="h-7 w-7"
               >
-                <X className="h-4 w-4 md:h-5 md:w-5" />
+                <X className="h-3.5 w-3.5" />
                 <span className="sr-only">Close</span>
               </Button>
             </div>

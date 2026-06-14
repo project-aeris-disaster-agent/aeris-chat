@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { FollowUpActions, type FollowUpAction } from './FollowUpActions'
 import { Headset, ShieldAlert, CheckCircle2 } from 'lucide-react'
+import { enrichChildren, type MessageEnrichHandlers } from '@/lib/chat/message-enrichment'
 
 interface MessageItemProps {
   message: Message
@@ -14,6 +15,7 @@ interface MessageItemProps {
   onOpenHotlines?: () => void
   onOpenReportInbox?: () => void
   onStatusUpdate?: (reportId: string | undefined) => void
+  onOpenForecast?: () => void
 }
 
 type MessageKind = 'ack' | 'urgent-followup' | 'operator' | 'status-update' | undefined
@@ -54,10 +56,12 @@ export function MessageItem({
   onOpenHotlines,
   onOpenReportInbox,
   onStatusUpdate,
+  onOpenForecast,
 }: MessageItemProps) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
   const kind = readKind(message.metadata)
+  const enrichHandlers: MessageEnrichHandlers = { onOpenForecast }
 
   const getBorderColor = () => {
     if (!selectedColors || selectedColors.length === 0) {
@@ -123,6 +127,21 @@ export function MessageItem({
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight]}
               components={{
+                p: ({ children }: any) => (
+                  <p>{enrichChildren(children, enrichHandlers, 'p')}</p>
+                ),
+                li: ({ children }: any) => (
+                  <li>{enrichChildren(children, enrichHandlers, 'li')}</li>
+                ),
+                td: ({ children }: any) => (
+                  <td>{enrichChildren(children, enrichHandlers, 'td')}</td>
+                ),
+                strong: ({ children }: any) => (
+                  <strong>{enrichChildren(children, enrichHandlers, 'strong')}</strong>
+                ),
+                em: ({ children }: any) => (
+                  <em>{enrichChildren(children, enrichHandlers, 'em')}</em>
+                ),
                 code: ({ node, inline, className, children, ...props }: any) => {
                   const match = /language-(\w+)/.exec(className || '')
                   return !inline && match ? (

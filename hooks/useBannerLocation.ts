@@ -7,6 +7,7 @@ import {
   clearIpLocationCache,
   detectUserLocation,
   getIpLocation,
+  type DetectedLocation,
 } from "@/lib/location/detect-location";
 
 const METADATA_LINE = buildBannerMetadataLine();
@@ -19,6 +20,7 @@ export function useBannerLocation() {
   const [locationLine, setLocationLine] = useState(DETECTING_LOCATION_LINE);
   const [isDetecting, setIsDetecting] = useState(true);
   const [hasAccurateLocation, setHasAccurateLocation] = useState(false);
+  const [detectedLocation, setDetectedLocation] = useState<DetectedLocation | null>(null);
   const lastDetectAtRef = useRef(0);
 
   const runDetection = useCallback(async (options?: { allowBrowserPrompt?: boolean; clearCache?: boolean }) => {
@@ -26,6 +28,7 @@ export function useBannerLocation() {
     setIsDetecting(true);
     setLocationLine(DETECTING_LOCATION_LINE);
     setHasAccurateLocation(false);
+    setDetectedLocation(null);
 
     if (options?.clearCache) {
       clearIpLocationCache();
@@ -39,6 +42,7 @@ export function useBannerLocation() {
 
     setLocationLine(displayLine);
     setHasAccurateLocation(location?.source === "browser");
+    setDetectedLocation(location);
     setIsDetecting(false);
   }, []);
 
@@ -73,6 +77,7 @@ export function useBannerLocation() {
     locationLine,
     isDetecting,
     hasAccurateLocation,
+    detectedLocation,
     redetect,
   };
 }

@@ -5,6 +5,43 @@ export type ChatMessage = {
   content: string;
 };
 
+export type AgentAssistantMessage = {
+  role: "assistant";
+  content: string | null;
+  tool_calls?: NvidiaToolCall[];
+};
+
+export type AgentToolMessage = {
+  role: "tool";
+  tool_call_id: string;
+  content: string;
+};
+
+export type AgentMessage = ChatMessage | AgentAssistantMessage | AgentToolMessage;
+
+export function serializeAgentMessages(messages: AgentMessage[]): Record<string, unknown>[] {
+  return messages.map((message) => {
+    if (message.role === "tool") {
+      return {
+        role: "tool",
+        tool_call_id: message.tool_call_id,
+        content: message.content,
+      };
+    }
+    if (message.role === "assistant" && "tool_calls" in message && message.tool_calls?.length) {
+      return {
+        role: "assistant",
+        content: message.content ?? null,
+        tool_calls: message.tool_calls,
+      };
+    }
+    return {
+      role: message.role,
+      content: "content" in message ? message.content : "",
+    };
+  });
+}
+
 const DEFAULT_MODEL = "meta/llama-3.3-70b-instruct";
 const DEFAULT_MAX_TOKENS = 2048;
 
@@ -162,7 +199,7 @@ export async function callNvidiaChatCompletion(
 }
 
 export async function callNvidiaWithTools(
-  messages: ChatMessage[],
+  messages: AgentMessage[],
   options: NvidiaCallOptions = {},
 ): Promise<NvidiaChatResult> {
   const config = getNvidiaConfig();
@@ -183,11 +220,32 @@ export async function callNvidiaWithTools(
       ? envMaxTokens
       : DEFAULT_MAX_TOKENS;
 
+  return callNvidiaAgentTurn(messages, {
+    ...options,
+    temperature,
+    maxTokens,
+  });
+}
+
+export function getWeatherToolLoopMaxSteps(): number {
+  const steps = Number(process.env.WEATHER_TOOL_LOOP_MAX_STEPS ?? "2");
+  return Number.isFinite(steps) && steps >= 1 && steps <= 4 ? steps : 2;
+}
+
+async function callNvidiaAgentTurn(
+  messages: AgentMessage[],
+  options: NvidiaCallOptions & { temperature: number; maxTokens: number },
+): Promise<NvidiaChatResult> {
+  const config = getNvidiaConfig();
+  if (!config) {
+    throw new Error("NVIDIA_API_KEY is not configured.");
+  }
+
   const body: Record<string, unknown> = {
     model: config.model,
-    messages: messages.map((m) => ({ role: m.role, content: m.content })),
-    max_tokens: maxTokens,
-    temperature,
+    messages: serializeAgentMessages(messages),
+    max_tokens: options.maxTokens,
+    temperature: options.temperature,
     top_p: 1,
     stream: false,
   };

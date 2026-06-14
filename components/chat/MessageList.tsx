@@ -25,6 +25,7 @@ interface MessageListProps {
   onOpenHotlines?: () => void
   onOpenReportInbox?: () => void
   onStatusUpdate?: (reportId: string | undefined) => void
+  onOpenForecast?: () => void
 }
 
 export function MessageList({
@@ -38,6 +39,7 @@ export function MessageList({
   onOpenHotlines,
   onOpenReportInbox,
   onStatusUpdate,
+  onOpenForecast,
 }: MessageListProps) {
   return (
     <div className="max-w-4xl mx-auto space-y-4">
@@ -54,6 +56,7 @@ export function MessageList({
               onOpenHotlines={onOpenHotlines}
               onOpenReportInbox={onOpenReportInbox}
               onStatusUpdate={onStatusUpdate}
+              onOpenForecast={onOpenForecast}
             />
             {entry && (
               <div className="flex justify-start">

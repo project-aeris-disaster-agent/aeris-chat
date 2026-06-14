@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Message } from '@/types/user'
 import { AUTH_DISABLED } from '@/lib/config'
 import { getAnonymousSessionId } from '@/lib/utils/anonymous-session'
+import type { ChatLocationPayload } from '@/lib/chat/location-payload'
 
 export function useChat(sessionId: string | null) {
   const supabase = createClient()
@@ -55,7 +56,15 @@ export function useChat(sessionId: string | null) {
 
   // Send message mutation
   const sendMessageMutation = useMutation({
-    mutationFn: async ({ content, sessionId: sid }: { content: string; sessionId: string }) => {
+    mutationFn: async ({
+      content,
+      sessionId: sid,
+      location,
+    }: {
+      content: string
+      sessionId: string
+      location?: ChatLocationPayload
+    }) => {
       console.log('useChat: Starting sendMessage mutation', { content, sessionId: sid });
       
       // Get anonymous session ID if needed
@@ -101,6 +110,7 @@ export function useChat(sessionId: string | null) {
         body: JSON.stringify({
           sessionId: sid,
           anonymousId: anonymousId || undefined, // Only send if exists
+          location,
           messages: [
             ...messages.map(m => ({ role: m.role, content: m.content })),
             { role: 'user', content },
@@ -154,13 +164,21 @@ export function useChat(sessionId: string | null) {
     },
   })
 
-  const sendMessage = async (content: string, sid: string) => {
-    return sendMessageMutation.mutateAsync({ content, sessionId: sid })
+  const sendMessage = async (
+    content: string,
+    sid: string,
+    location?: ChatLocationPayload,
+  ) => {
+    return sendMessageMutation.mutateAsync({ content, sessionId: sid, location })
   }
 
   return {
     messages,
-    isLoading: isLoading || sendMessageMutation.isPending,
+    // Initial fetch of a session's messages. Drives the full-screen loader.
+    isLoading,
+    // A reply is in flight. Drives the inline "AI is thinking…" indicator only,
+    // so a multi-second weather answer never blocks the whole screen.
+    isSending: sendMessageMutation.isPending,
     sendMessage,
   }
 }

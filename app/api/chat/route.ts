@@ -3,12 +3,26 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { AUTH_DISABLED } from '@/lib/config'
+import { runAgentLoop } from '@/lib/chat/agent-loop'
+import {
+  formatLocationContextBlock,
+  parseChatLocationPayload,
+  resolveChatLocation,
+} from '@/lib/chat/location-payload'
 import {
   callNvidiaChatCompletion,
   getNvidiaConfig,
+  type AgentMessage,
   type ChatMessage as NvidiaChatMessage,
 } from '@/lib/nvidia-llm'
 import { getCitizenSystemPrompt } from '@/lib/character/aeris-character'
+import { getClientIP } from '@/lib/utils/anonymous-session'
+import { detectWeatherIntent } from '@/lib/weather/intent'
+import {
+  buildWeatherLiveContext,
+  formatWeatherLiveContextBlock,
+} from '@/lib/weather/build-context'
+import { runWeatherTool, WEATHER_AGENT_TOOLS } from '@/lib/weather/agent-tools'
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,6 +45,7 @@ export async function POST(request: NextRequest) {
           sessionId?: string
           messages?: Array<{ role?: string; content?: string }>
           anonymousId?: string
+          location?: unknown
         }
       | undefined
     try {
@@ -42,7 +57,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { sessionId, messages, anonymousId } = body ?? {}
+    const { sessionId, messages, anonymousId, location: rawLocation } = body ?? {}
 
     if (
       !sessionId ||
@@ -151,14 +166,51 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // The compiled AERIS character card is the default persona. LLM_SYSTEM_PROMPT
-    // (if set) overrides it, and an existing in-conversation system message wins.
+    const latestUserMessage =
+      [...sanitizedMessages].reverse().find((m) => m.role === 'user')?.content ?? ''
+    const weatherIntent = detectWeatherIntent(latestUserMessage)
+
+    const clientIp = getClientIP(request) ?? 'unknown'
+    const clientLocation = parseChatLocationPayload(rawLocation)
+    const resolvedLocation = await resolveChatLocation(clientLocation, clientIp)
+
     const systemPrompt = process.env.LLM_SYSTEM_PROMPT?.trim() || getCitizenSystemPrompt()
     const hasSystem = sanitizedMessages.some((m) => m.role === 'system')
-    const finalMessages: NvidiaChatMessage[] =
-      systemPrompt && !hasSystem
-        ? [{ role: 'system', content: systemPrompt }, ...sanitizedMessages]
-        : sanitizedMessages
+
+    const contextBlocks: string[] = []
+    if (resolvedLocation) {
+      contextBlocks.push(formatLocationContextBlock(resolvedLocation))
+    }
+
+    let hasUsableWeatherData = false
+    if (weatherIntent.match && weatherIntent.kind && resolvedLocation) {
+      // Widen the forecast window when the user asks about "this week".
+      const wantsWeek = /\b(week|linggo|days)\b/i.test(latestUserMessage)
+      const days = wantsWeek ? 7 : undefined
+      const liveContext = await buildWeatherLiveContext(
+        resolvedLocation,
+        weatherIntent.kind,
+        days,
+      )
+      hasUsableWeatherData = Boolean(
+        liveContext.forecast?.available || liveContext.cyclones?.available,
+      )
+      contextBlocks.push(formatWeatherLiveContextBlock(liveContext))
+    }
+
+    const systemMessages: NvidiaChatMessage[] = []
+    if (systemPrompt && !hasSystem) {
+      systemMessages.push({ role: 'system', content: systemPrompt })
+    }
+    for (const block of contextBlocks) {
+      systemMessages.push({ role: 'system', content: block })
+    }
+
+    const conversationMessages = hasSystem
+      ? sanitizedMessages
+      : sanitizedMessages.filter((m) => m.role !== 'system')
+
+    const finalMessages: AgentMessage[] = [...systemMessages, ...conversationMessages]
 
     const controller = new AbortController()
     const timeoutMs = Number(process.env.LLM_TIMEOUT_MS ?? '45000')
@@ -168,9 +220,30 @@ export async function POST(request: NextRequest) {
     )
 
     try {
-      const aiMessage = await callNvidiaChatCompletion(finalMessages, {
-        signal: controller.signal,
-      })
+      let aiMessage: string
+
+      if (weatherIntent.match && hasUsableWeatherData) {
+        // Prefetch path: LIVE_CONTEXT already holds the data the model needs,
+        // so answer directly without tools. This is the reliable common path
+        // and avoids weaker models leaking tool-call JSON as text.
+        aiMessage = await callNvidiaChatCompletion(finalMessages as NvidiaChatMessage[], {
+          signal: controller.signal,
+        })
+      } else if (weatherIntent.match) {
+        // Prefetch could not gather usable data (e.g. no location). Let the
+        // model use tools to try fetching what it needs.
+        aiMessage = await runAgentLoop(finalMessages, {
+          signal: controller.signal,
+          tools: WEATHER_AGENT_TOOLS,
+          runTool: (name, args) =>
+            runWeatherTool(name, args, { userLocation: resolvedLocation }),
+        })
+      } else {
+        aiMessage = await callNvidiaChatCompletion(finalMessages as NvidiaChatMessage[], {
+          signal: controller.signal,
+        })
+      }
+
       clearTimeout(timeoutId)
 
       await persistUserAndAssistant(aiMessage)

@@ -11,7 +11,8 @@
     "dev:clean": "npm run clean && next dev",
     "smoke:llm": "node scripts/test-llm.mjs",
     "benchmark:models": "node --env-file=.env scripts/benchmark-nvidia-models.mjs",
-    "smoke:intent": "npx tsx scripts/test-incident-intent.ts"
+    "smoke:intent": "npx tsx scripts/test-incident-intent.ts",
+    "smoke:weather-intent": "npx tsx scripts/test-weather-intent.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",

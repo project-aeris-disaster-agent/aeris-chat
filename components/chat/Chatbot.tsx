@@ -31,6 +31,7 @@ import { AdBanner, QuickActionsNav } from "@/components/chat/BottomNavBar";
 import { EmergencyHotlinesModal } from "@/components/chat/EmergencyHotlinesModal";
 import { SOSConfirmModal } from "@/components/chat/SOSConfirmModal";
 import { DonationWalletModal } from "@/components/chat/DonationWalletModal";
+import { ForecastPanelModal } from "@/components/chat/ForecastPanelModal";
 import { ReportIncidentModal } from "@/components/chat/ReportIncidentModal";
 import { IncidentDetectionPopup } from "@/components/chat/IncidentDetectionPopup";
 import { ReportInboxModal } from "@/components/chat/ReportInboxModal";
@@ -38,6 +39,7 @@ import { MessageList } from "@/components/chat/MessageList";
 import { useBannerLocation } from "@/hooks/useBannerLocation";
 import { useChat } from "@/hooks/useChat";
 import { useSessions } from "@/hooks/useSessions";
+import { toChatLocationPayload } from "@/lib/chat/location-payload";
 import { detectIncidentIntent, type DraftIncidentReport } from "@/lib/incidents/intent";
 
 type DraftApiResponse = {
@@ -78,6 +80,7 @@ export function Chatbot() {
 
   const [isHotlinesModalOpen, setIsHotlinesModalOpen] = React.useState(false);
   const [isDonationModalOpen, setIsDonationModalOpen] = React.useState(false);
+  const [isForecastPanelOpen, setIsForecastPanelOpen] = React.useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = React.useState(false);
   const [isReportInboxOpen, setIsReportInboxOpen] = React.useState(false);
   const [reportInboxRefreshKey, setReportInboxRefreshKey] = React.useState(0);
@@ -126,8 +129,8 @@ export function Chatbot() {
 
   // Chat hooks
   const { sessions, createSession, isLoading: sessionsLoading } = useSessions();
-  const { messages, sendMessage, isLoading: messagesLoading } = useChat(currentSessionId);
-  const { metadataLine, locationLine, isDetecting, hasAccurateLocation, redetect } = useBannerLocation();
+  const { messages, sendMessage, isLoading: messagesLoading, isSending: isAwaitingReply } = useChat(currentSessionId);
+  const { metadataLine, locationLine, isDetecting, hasAccurateLocation, detectedLocation, redetect } = useBannerLocation();
 
   // Auto-scroll to bottom when messages change
   React.useEffect(() => {
@@ -379,7 +382,7 @@ export function Chatbot() {
           setPendingIntents((prev) => [...prev, messageToSend]);
         }
 
-        await sendMessage(messageToSend, sessionId);
+        await sendMessage(messageToSend, sessionId, toChatLocationPayload(detectedLocation));
         console.log('Message sent successfully');
         triggerBackgroundAnimation();
       }
@@ -649,7 +652,7 @@ export function Chatbot() {
 
                 transition={{ duration: 0.8, ease: "easeInOut" }}
 
-                className="absolute inset-0 h-full w-full object-cover"
+                className="pointer-events-none absolute inset-0 h-full w-full object-cover"
 
               >
 
@@ -682,7 +685,7 @@ export function Chatbot() {
             )}
 
             {hovered && prefersReducedMotion && (
-              <div className="absolute inset-0 h-full w-full bg-gradient-to-br from-sky-400/10 via-cyan-400/5 to-blue-500/10" />
+              <div className="pointer-events-none absolute inset-0 h-full w-full bg-gradient-to-br from-sky-400/10 via-cyan-400/5 to-blue-500/10" />
             )}
 
           </AnimatePresence>
@@ -703,7 +706,7 @@ export function Chatbot() {
             </div>
           )}
 
-          <div className="z-20 mx-auto flex w-full max-w-4xl flex-1 flex-col min-h-0 overflow-hidden px-2 md:px-3 lg:px-4">
+          <div className="relative z-20 mx-auto flex w-full max-w-4xl flex-1 flex-col min-h-0 overflow-hidden px-2 md:px-3 lg:px-4">
 
             {/* bagyo.app Branding - At Top */}
             {!isSOSActive && (
@@ -721,7 +724,7 @@ export function Chatbot() {
                     <h1 className="select-none text-center text-lg font-extrabold leading-none tracking-tight sm:text-xl md:text-lg lg:text-xl md:text-right">
                       <span
                         data-content="CHAT SUPPORT"
-                        className="before:animate-gradient-background-2 relative before:absolute before:bottom-0 md:before:bottom-1 before:left-0 before:top-0 before:z-0 before:w-full before:px-2 md:before:px-1 before:content-[attr(data-content)] sm:before:top-0 text-sm md:text-sm lg:text-base"
+                        className="before:animate-gradient-background-2 relative inline-block whitespace-nowrap before:absolute before:bottom-0 md:before:bottom-1 before:left-0 before:top-0 before:z-0 before:w-full before:px-2 md:before:px-1 before:content-[attr(data-content)] sm:before:top-0 text-sm md:text-sm lg:text-base"
                       >
                         <span className="from-gradient-2-start to-gradient-2-end animate-gradient-foreground-2 bg-gradient-to-r bg-clip-text px-2 md:px-1 text-transparent text-sm md:text-sm lg:text-base">
                           CHAT SUPPORT
@@ -782,11 +785,12 @@ export function Chatbot() {
                     {messages.length > 0 ? (
                       <MessageList
                         messages={messages}
-                        isLoading={messagesLoading}
+                        isLoading={isSending || isAwaitingReply}
                         selectedColors={selectedColors}
                         sessionId={currentSessionId}
                         onOpenHotlines={() => setIsHotlinesModalOpen(true)}
                         onOpenReportInbox={() => setIsReportInboxOpen(true)}
+                        onOpenForecast={() => setIsForecastPanelOpen(true)}
                         onStatusUpdate={(reportId) => {
                           if (!reportId) return;
                           setMessageInput((prev) =>
@@ -958,6 +962,12 @@ export function Chatbot() {
       <DonationWalletModal
         isOpen={isDonationModalOpen}
         onClose={() => setIsDonationModalOpen(false)}
+      />
+
+      {/* PANAHON / PAGASA forecast popup panel */}
+      <ForecastPanelModal
+        isOpen={isForecastPanelOpen}
+        onClose={() => setIsForecastPanelOpen(false)}
       />
 
       <IncidentDetectionPopup

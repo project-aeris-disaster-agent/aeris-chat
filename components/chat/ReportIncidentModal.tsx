@@ -117,7 +117,21 @@ type SubmittedReport = {
   messageId?: string;
 };
 
-type ReportFieldHint = "description" | "location";
+type ReportFieldHint = "category" | "description" | "location";
+
+function fieldHintFromApiError(message: string): { field: ReportFieldHint; message: string } | null {
+  const lower = message.toLowerCase();
+  if (lower.includes("description")) {
+    return { field: "description", message };
+  }
+  if (lower.includes("position") || lower.includes("location")) {
+    return { field: "location", message };
+  }
+  if (lower.includes("category")) {
+    return { field: "category", message };
+  }
+  return null;
+}
 
 const IP_LOCATION_ACCURACY_M = 25000
 const IP_LOCATION_CACHE_KEY = 'aeris_ip_location_cache'
@@ -726,13 +740,22 @@ export function ReportIncidentModal({
     }
   }, [isOpen, startTutorial]);
 
-  // When closed, clear the walkthrough so it doesn't resume unexpectedly.
+  // When closed, reset form state so the next open starts clean.
   useEffect(() => {
     if (!isOpen) {
       setTutorialStep(null);
       setFieldHint(null);
+      setForm(EMPTY_FORM);
+      setStatus(null);
+      setSubmittedReport(null);
+      setPhoneNumber(DEFAULT_PHONE_PREFIX);
+      setOtpCode("");
+      setOtpStatus(null);
+      setShowVerificationPopup(false);
+      setLocationQuery("");
+      clearPhoto();
     }
-  }, [isOpen]);
+  }, [isOpen, clearPhoto]);
 
   // Scroll the highlighted section into view as the walkthrough advances.
   useEffect(() => {
@@ -758,8 +781,20 @@ export function ReportIncidentModal({
     setStatus(null);
 
     const targetRef =
-      hint.field === "description" ? descriptionSectionRef : locationSectionRef;
+      hint.field === "description"
+        ? descriptionSectionRef
+        : hint.field === "category"
+          ? categorySectionRef
+          : locationSectionRef;
     targetRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    requestAnimationFrame(() => {
+      if (hint.field === "description") {
+        descriptionSectionRef.current?.querySelector("textarea")?.focus();
+      } else if (hint.field === "location") {
+        locationSectionRef.current?.querySelector("input")?.focus();
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -795,6 +830,9 @@ export function ReportIncidentModal({
     fieldHint?.field === field
       ? "rounded-xl ring-2 ring-amber-500 ring-offset-2 ring-offset-background transition-shadow"
       : "";
+
+  const fieldHintMessage = (field: ReportFieldHint): string | null =>
+    fieldHint?.field === field ? fieldHint.message : null;
 
   const submitReport = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -844,21 +882,16 @@ export function ReportIncidentModal({
         throw new Error(body.error ?? `Report failed (${response.status})`);
       }
 
-      setForm(EMPTY_FORM);
-      clearPhoto();
-      const report = body.report ? { id: body.report.id, messageId: body.report.messageId } : null;
-      setSubmittedReport(report);
-      setPhoneNumber(DEFAULT_PHONE_PREFIX);
-      setOtpCode("");
-      setOtpStatus(null);
-      setShowVerificationPopup(false);
       onSubmitted?.();
-      setStatus({
-        tone: "ok",
-        message: "Report sent to AERIS. You can verify your phone later from Report Inbox.",
-      });
+      onClose();
     } catch (error) {
-      setStatus({ tone: "error", message: (error as Error).message });
+      const message = (error as Error).message;
+      const fieldError = fieldHintFromApiError(message);
+      if (fieldError) {
+        showFieldHelp(fieldError);
+      } else {
+        setStatus({ tone: "error", message });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -989,6 +1022,7 @@ export function ReportIncidentModal({
               ref={categorySectionRef}
               className={cn(
                 "space-y-2",
+                fieldHintClass("category"),
                 sectionTutorialClass("category"),
               )}
             >
@@ -1024,6 +1058,15 @@ export function ReportIncidentModal({
                   );
                 })}
               </div>
+              {fieldHintMessage("category") && (
+                <p
+                  role="status"
+                  className="flex items-start gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200"
+                >
+                  <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <span>{fieldHintMessage("category")}</span>
+                </p>
+              )}
             </div>
 
             <div
@@ -1098,6 +1141,15 @@ export function ReportIncidentModal({
                       }`
                     : "Drag the map or search to set the incident location."}
               </div>
+              {fieldHintMessage("location") && (
+                <p
+                  role="status"
+                  className="flex items-start gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200"
+                >
+                  <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <span>{fieldHintMessage("location")}</span>
+                </p>
+              )}
             </div>
 
             <div
@@ -1176,13 +1228,16 @@ export function ReportIncidentModal({
                 placeholder="What is happening? Include landmarks, urgency, and visible risks."
                 className="min-h-24 w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
               />
+              {fieldHintMessage("description") && (
+                <p
+                  role="status"
+                  className="flex items-start gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200"
+                >
+                  <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <span>{fieldHintMessage("description")}</span>
+                </p>
+              )}
             </label>
-
-            {status?.tone === "ok" && (
-              <p className="rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
-                {status.message}
-              </p>
-            )}
 
             {submittedReport && !showVerificationPopup && (
               <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
@@ -1212,16 +1267,6 @@ export function ReportIncidentModal({
                 sectionTutorialClass("submit"),
               )}
             >
-              {fieldHint && (
-                <div
-                  role="status"
-                  className="mb-3 flex items-start gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200"
-                >
-                  <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                  <span>{fieldHint.message}</span>
-                </div>
-              )}
-
               {status?.tone === "error" && (
                 <p className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
                   {status.message}
@@ -1234,10 +1279,16 @@ export function ReportIncidentModal({
                 </Button>
                 <Button
                   type="submit"
-                  className="flex-1"
+                  className="group relative isolate flex-1 overflow-hidden border-2 border-yellow-500 bg-[linear-gradient(110deg,#f59e0b,#fbbf24,#f59e0b)] bg-[length:200%_auto] font-bold text-black shadow-[0_4px_16px_-2px_rgba(245,158,11,0.5)] [animation:gradient_3s_ease_infinite] hover:bg-[position:right_center] hover:shadow-[0_6px_22px_-2px_rgba(245,158,11,0.85)] disabled:opacity-60"
                   disabled={submitting || (locating && !form.position)}
                 >
-                  {submitting ? "Sending..." : locating && !form.position ? "Detecting location..." : "Send report"}
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 bg-[linear-gradient(110deg,transparent,rgba(255,255,255,0.6),transparent)] [animation:gold-wipe_2.8s_ease-in-out_infinite]"
+                  />
+                  <span className="relative z-10">
+                    {submitting ? "Sending..." : locating && !form.position ? "Detecting location..." : "Send report"}
+                  </span>
                 </Button>
               </div>
             </div>

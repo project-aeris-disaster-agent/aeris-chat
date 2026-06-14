@@ -112,9 +112,21 @@ body {
   }
 }
 
-/* Markdown styling */
+/* Markdown styling for AERIS chat responses */
 .prose {
   color: inherit;
+  line-height: 1.6;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+/* Collapse outer margins so the bubble padding controls the edges. */
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose > :last-child {
+  margin-bottom: 0;
 }
 
 .prose p {
@@ -125,7 +137,40 @@ body {
 .prose ul, .prose ol {
   margin-top: 0.5em;
   margin-bottom: 0.5em;
-  padding-left: 1.5em;
+  padding-left: 1.4em;
+}
+
+/* Tailwind preflight strips list markers; restore them so lists read as lists. */
+.prose ul {
+  list-style-type: disc;
+}
+
+.prose ol {
+  list-style-type: decimal;
+}
+
+.prose ul ul, .prose ol ul {
+  list-style-type: circle;
+}
+
+.prose li {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+  padding-left: 0.2em;
+}
+
+.prose li::marker {
+  color: currentColor;
+  opacity: 0.55;
+}
+
+.prose li > p {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+
+.prose strong {
+  font-weight: 650;
 }
 
 .prose code {
@@ -152,25 +197,77 @@ body {
 }
 
 .prose h1, .prose h2, .prose h3, .prose h4 {
-  margin-top: 1em;
-  margin-bottom: 0.5em;
-  font-weight: 600;
+  margin-top: 0.9em;
+  margin-bottom: 0.4em;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.prose h1 {
+  font-size: 1.15rem;
+}
+
+.prose h2 {
+  font-size: 1.08rem;
+}
+
+.prose h3, .prose h4 {
+  font-size: 1rem;
 }
 
 .prose blockquote {
   border-left: 4px solid #4169E1;
   padding-left: 1em;
-  margin-left: 0;
+  margin: 0.5em 0;
   font-style: italic;
   color: #6B7280;
 }
 
-.prose a {
+/* Tables from remark-gfm. */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  font-size: 0.9em;
+}
+
+.prose th, .prose td {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  padding: 0.35em 0.6em;
+  text-align: left;
+}
+
+.dark .prose th, .dark .prose td {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.prose th {
+  background-color: rgba(0, 0, 0, 0.05);
+  font-weight: 600;
+}
+
+.dark .prose th {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.prose hr {
+  margin: 0.85em 0;
+  border: 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.dark .prose hr {
+  border-top-color: rgba(255, 255, 255, 0.14);
+}
+
+/* Base link color only when the element has no explicit text-color utility,
+   so enriched source/phone links keep their sky/emerald styling. */
+.prose :where(a):not([class*="text-"]) {
   color: #4169E1;
   text-decoration: underline;
 }
 
-.prose a:hover {
+.prose :where(a):not([class*="text-"]):hover {
   color: #1E3A8A;
 }
 
@@ -472,6 +569,16 @@ body {
   }
   100% {
     background-position: 0% 50%;
+  }
+}
+
+@keyframes gold-wipe {
+  0% {
+    transform: translateX(-100%);
+  }
+  55%,
+  100% {
+    transform: translateX(100%);
   }
 }
 
