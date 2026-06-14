@@ -2,14 +2,16 @@
 
 import React from "react";
 import Image from "next/image";
-import { Phone, Heart, Siren } from "lucide-react";
+import { Phone, Heart, Siren, Map, Newspaper } from "lucide-react";
 import { cn } from "@/lib/utils";
 import adsBanner from "@/assets/ads_v2_2026.gif";
 
 type BottomNavBarProps = {
+  onOpenMap: () => void;
   onOpenHotlines: () => void;
   onActivateSOS: () => void;
   onOpenDonate: () => void;
+  onOpenNews: () => void;
   className?: string;
 };
 
@@ -58,9 +60,11 @@ export function AdBanner({ className }: { className?: string }) {
 }
 
 export function QuickActionsNav({
+  onOpenMap,
   onOpenHotlines,
   onActivateSOS,
   onOpenDonate,
+  onOpenNews,
   className,
 }: BottomNavBarProps) {
   return (
@@ -71,15 +75,16 @@ export function QuickActionsNav({
         className,
       )}
     >
-      <div className="flex w-full items-center justify-between gap-1 py-1.5 md:py-1">
+      <div className="flex w-full items-center justify-between gap-0.5 py-1.5 md:gap-1 md:py-1">
+        <NavItem label="Map" icon={Map} onClick={onOpenMap} />
         <NavItem label="Hotlines" icon={Phone} onClick={onOpenHotlines} />
 
-        <div className="flex flex-1 flex-col items-center justify-center">
+        <div className="flex shrink-0 flex-col items-center justify-center px-0.5">
           <button
             type="button"
             onClick={onActivateSOS}
             aria-label="Activate SOS emergency mode"
-            className="flex h-11 w-11 items-center justify-center rounded-full text-white shadow-lg shadow-red-900/30 transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 md:h-10 md:w-10"
+            className="flex h-[57px] w-[57px] items-center justify-center rounded-full text-white shadow-lg shadow-red-900/30 transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 md:h-[52px] md:w-[52px]"
             style={{
               background:
                 "linear-gradient(90deg, #b91c1c 0%, #ef4444 50%, #b91c1c 100%)",
@@ -88,7 +93,7 @@ export function QuickActionsNav({
               border: "none",
             }}
           >
-            <Siren className="h-6 w-6 md:h-5 md:w-5" />
+            <Siren className="h-[31px] w-[31px] md:h-[26px] md:w-[26px]" />
           </button>
           <span className="mt-0.5 text-[10px] font-bold leading-none text-red-600 dark:text-red-400 md:text-[11px]">
             SOS
@@ -96,6 +101,7 @@ export function QuickActionsNav({
         </div>
 
         <NavItem label="Donate" icon={Heart} onClick={onOpenDonate} />
+        <NavItem label="News" icon={Newspaper} onClick={onOpenNews} />
       </div>
     </nav>
   );

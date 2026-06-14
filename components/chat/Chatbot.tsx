@@ -32,6 +32,8 @@ import { EmergencyHotlinesModal } from "@/components/chat/EmergencyHotlinesModal
 import { SOSConfirmModal } from "@/components/chat/SOSConfirmModal";
 import { DonationWalletModal } from "@/components/chat/DonationWalletModal";
 import { ForecastPanelModal } from "@/components/chat/ForecastPanelModal";
+import { MapPanelModal } from "@/components/chat/MapPanelModal";
+import { NewsPanelModal } from "@/components/chat/NewsPanelModal";
 import { ReportIncidentModal } from "@/components/chat/ReportIncidentModal";
 import { IncidentDetectionPopup } from "@/components/chat/IncidentDetectionPopup";
 import { ReportInboxModal } from "@/components/chat/ReportInboxModal";
@@ -81,6 +83,8 @@ export function Chatbot() {
   const [isHotlinesModalOpen, setIsHotlinesModalOpen] = React.useState(false);
   const [isDonationModalOpen, setIsDonationModalOpen] = React.useState(false);
   const [isForecastPanelOpen, setIsForecastPanelOpen] = React.useState(false);
+  const [isMapPanelOpen, setIsMapPanelOpen] = React.useState(false);
+  const [isNewsPanelOpen, setIsNewsPanelOpen] = React.useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = React.useState(false);
   const [isReportInboxOpen, setIsReportInboxOpen] = React.useState(false);
   const [reportInboxRefreshKey, setReportInboxRefreshKey] = React.useState(0);
@@ -923,9 +927,11 @@ export function Chatbot() {
 
             {!isSOSActive && (
               <QuickActionsNav
+                onOpenMap={() => setIsMapPanelOpen(true)}
                 onOpenHotlines={() => setIsHotlinesModalOpen(true)}
                 onActivateSOS={() => setIsSOSActive(true)}
                 onOpenDonate={() => setIsDonationModalOpen(true)}
+                onOpenNews={() => setIsNewsPanelOpen(true)}
               />
             )}
 
@@ -968,6 +974,16 @@ export function Chatbot() {
       <ForecastPanelModal
         isOpen={isForecastPanelOpen}
         onClose={() => setIsForecastPanelOpen(false)}
+      />
+
+      <MapPanelModal
+        isOpen={isMapPanelOpen}
+        onClose={() => setIsMapPanelOpen(false)}
+      />
+
+      <NewsPanelModal
+        isOpen={isNewsPanelOpen}
+        onClose={() => setIsNewsPanelOpen(false)}
       />
 
       <IncidentDetectionPopup
