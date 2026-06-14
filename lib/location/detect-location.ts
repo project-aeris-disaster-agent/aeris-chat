@@ -54,29 +54,99 @@ export function clearIpLocationCache(): void {
   }
 }
 
-export async function getBrowserLocation(): Promise<DetectedLocation | null> {
+export type BrowserLocationOptions = {
+  /**
+   * Stop early once a fix at or below this accuracy (in meters) arrives.
+   * Mobile GPS typically converges to <30m; defaults to 35m.
+   */
+  desiredAccuracyM?: number;
+  /** Maximum time to keep refining the fix before returning the best so far. */
+  timeoutMs?: number;
+};
+
+const DEFAULT_DESIRED_ACCURACY_M = 35;
+const DEFAULT_LOCATION_TIMEOUT_MS = 15000;
+
+function toBrowserLocation(position: GeolocationPosition): DetectedLocation {
+  const longitude = Number(position.coords.longitude.toFixed(6));
+  const latitude = Number(position.coords.latitude.toFixed(6));
+  const accuracyM = Math.round(position.coords.accuracy);
+  return {
+    position: [longitude, latitude],
+    accuracyM,
+    source: "browser",
+    label: "Precise device location detected",
+    metadata: {
+      geolocation: {
+        source: "browser",
+        accuracyM,
+        altitude: position.coords.altitude ?? undefined,
+        heading: position.coords.heading ?? undefined,
+        speed: position.coords.speed ?? undefined,
+        capturedAt: new Date(position.timestamp).toISOString(),
+      },
+    },
+  };
+}
+
+/**
+ * Acquire the most accurate device fix available.
+ *
+ * On mobile the first geolocation callback is usually a coarse Wi-Fi/cell
+ * estimate; the GPS radio then delivers progressively tighter fixes. We watch
+ * the position and keep the best one, forcing a fresh reading (`maximumAge: 0`)
+ * and high accuracy so Android and iOS both engage GPS rather than returning a
+ * stale, low-accuracy cached location.
+ */
+export async function getBrowserLocation(
+  options?: BrowserLocationOptions,
+): Promise<DetectedLocation | null> {
   if (typeof navigator === "undefined" || !navigator.geolocation) return null;
 
+  const desiredAccuracyM = options?.desiredAccuracyM ?? DEFAULT_DESIRED_ACCURACY_M;
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_LOCATION_TIMEOUT_MS;
+
   return new Promise((resolve) => {
-    navigator.geolocation.getCurrentPosition(
+    let best: GeolocationPosition | null = null;
+    let settled = false;
+    let watchId: number | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanup = () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(best ? toBrowserLocation(best) : null);
+    };
+
+    timer = setTimeout(finish, timeoutMs);
+
+    watchId = navigator.geolocation.watchPosition(
       (position) => {
-        const longitude = Number(position.coords.longitude.toFixed(6));
-        const latitude = Number(position.coords.latitude.toFixed(6));
-        resolve({
-          position: [longitude, latitude],
-          accuracyM: Math.round(position.coords.accuracy),
-          source: "browser",
-          label: "Precise device location detected",
-          metadata: {
-            geolocation: {
-              source: "browser",
-              accuracyM: Math.round(position.coords.accuracy),
-            },
-          },
-        });
+        if (!best || position.coords.accuracy < best.coords.accuracy) {
+          best = position;
+        }
+        // Good enough — no need to keep the GPS radio spinning.
+        if (position.coords.accuracy <= desiredAccuracyM) {
+          finish();
+        }
       },
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+      () => {
+        // Surface whatever best fix we collected before the error.
+        finish();
+      },
+      { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 0 },
     );
   });
 }
@@ -167,6 +237,8 @@ async function resolvePlaceLabel(
 
 export async function detectUserLocation(options?: {
   allowBrowserPrompt?: boolean;
+  desiredAccuracyM?: number;
+  timeoutMs?: number;
 }): Promise<DetectedLocation | null> {
   const ipLocation = await getIpLocation();
   const permission = await getGeolocationPermission();
@@ -174,7 +246,10 @@ export async function detectUserLocation(options?: {
     permission === "granted" || (options?.allowBrowserPrompt && permission !== "denied");
 
   if (shouldUseBrowserLocation) {
-    const browserLocation = await getBrowserLocation();
+    const browserLocation = await getBrowserLocation({
+      desiredAccuracyM: options?.desiredAccuracyM,
+      timeoutMs: options?.timeoutMs,
+    });
     if (browserLocation) {
       return {
         ...browserLocation,

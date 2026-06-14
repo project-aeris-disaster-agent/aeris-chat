@@ -127,7 +127,7 @@ export function Chatbot() {
   // Chat hooks
   const { sessions, createSession, isLoading: sessionsLoading } = useSessions();
   const { messages, sendMessage, isLoading: messagesLoading } = useChat(currentSessionId);
-  const { metadataLine, locationLine, isDetecting, redetect } = useBannerLocation();
+  const { metadataLine, locationLine, isDetecting, hasAccurateLocation, redetect } = useBannerLocation();
 
   // Auto-scroll to bottom when messages change
   React.useEffect(() => {
@@ -736,34 +736,44 @@ export function Chatbot() {
                     </p>
                   </div>
                 </div>
-
-                <div className="mt-1.5 flex w-full items-center gap-2 rounded-md border border-border bg-background/70 px-2 py-1 shadow-sm backdrop-blur-sm md:justify-end">
-                  <p
-                    className="min-w-0 flex-1 truncate text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground md:text-right md:text-[11px]"
-                    title={locationLine}
-                  >
-                    {locationLine}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => void redetect()}
-                    disabled={isDetecting}
-                    aria-label="Autodetect location"
-                    className="inline-flex shrink-0 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 md:text-[10px]"
-                  >
-                    {isDetecting ? (
-                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                    ) : (
-                      <LocateFixed className="h-3 w-3" aria-hidden />
-                    )}
-                    autodetect
-                  </button>
-                </div>
               </div>
             )}
 
             {/* Ad banner */}
             {!isSOSActive && <AdBanner />}
+
+            {!isSOSActive && (
+              <div className="mt-1.5 flex w-full items-center gap-2 rounded-md border border-border bg-background/70 px-2 py-1 shadow-sm backdrop-blur-sm md:justify-end flex-shrink-0">
+                <p
+                  className="min-w-0 flex-1 truncate text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground md:text-right md:text-[11px]"
+                  title={locationLine}
+                >
+                  {locationLine}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void redetect()}
+                  disabled={isDetecting}
+                  aria-label="Autodetect location"
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 md:text-[10px]"
+                >
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                      hasAccurateLocation && !isDetecting
+                        ? "bg-green-500"
+                        : "bg-muted-foreground/50"
+                    }`}
+                    aria-hidden
+                  />
+                  {isDetecting ? (
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                  ) : (
+                    <LocateFixed className="h-3 w-3" aria-hidden />
+                  )}
+                  autodetect
+                </button>
+              </div>
+            )}
 
             <ScrollArea className="flex-1 w-full overflow-auto min-h-0">
               <div id="chat" className="w-full">
@@ -917,8 +927,10 @@ export function Chatbot() {
 
             {/* Footer */}
             <div className="w-full pb-safe pb-2 md:pb-1.5 lg:pb-2 text-center flex-shrink-0">
-              <p className="text-xs md:text-xs lg:text-sm text-foreground dark:text-white">
-                New Prontera Tehcnologies Corp.™ All Rights Reserved 2026
+              <p className="text-[0.525rem] md:text-[0.525rem] lg:text-[0.6125rem] text-foreground dark:text-white">
+                New Prontera Tehcnologies Corp.™
+                <br />
+                All Rights Reserved 2026
               </p>
             </div>
 

@@ -9,6 +9,30 @@ export interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
+/**
+ * Chrome/Android can fire `beforeinstallprompt` before React mounts. An inline
+ * script in the document head stashes the event on `window` so we never miss
+ * it; these helpers read/clear that stash and notify listeners.
+ */
+const DEFERRED_PROMPT_KEY = '__aerisDeferredInstallPrompt'
+export const INSTALL_PROMPT_AVAILABLE_EVENT = 'aeris:install-available'
+
+type WindowWithPrompt = Window & {
+  [DEFERRED_PROMPT_KEY]?: BeforeInstallPromptEvent | null
+}
+
+export function getDeferredInstallPrompt(): BeforeInstallPromptEvent | null {
+  if (typeof window === 'undefined') return null
+  return (window as WindowWithPrompt)[DEFERRED_PROMPT_KEY] ?? null
+}
+
+export function setDeferredInstallPrompt(
+  event: BeforeInstallPromptEvent | null,
+): void {
+  if (typeof window === 'undefined') return
+  ;(window as WindowWithPrompt)[DEFERRED_PROMPT_KEY] = event
+}
+
 export function isMobileDevice(): boolean {
   if (typeof window === 'undefined') return false
   const ua = navigator.userAgent

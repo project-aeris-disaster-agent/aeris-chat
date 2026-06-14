@@ -33,6 +33,30 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-app overflow-hidden">
+      <head>
+        {/*
+          Capture the install prompt before React hydrates. Android can dispatch
+          `beforeinstallprompt` during initial load, well before the install UI
+          mounts, so we stash it on `window` and re-broadcast for the prompt UI.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+(function () {
+  window.addEventListener('beforeinstallprompt', function (event) {
+    event.preventDefault();
+    window.__aerisDeferredInstallPrompt = event;
+    window.dispatchEvent(new Event('aeris:install-available'));
+  });
+  window.addEventListener('appinstalled', function () {
+    window.__aerisDeferredInstallPrompt = null;
+    try { localStorage.setItem('aeris-pwa-installed', '1'); } catch (e) {}
+  });
+})();
+            `.trim(),
+          }}
+        />
+      </head>
       <body className="h-app overflow-hidden">
         <Providers>
           <AuthProvider>

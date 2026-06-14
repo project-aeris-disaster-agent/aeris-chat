@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import {
   type BeforeInstallPromptEvent,
   type InstallPromptMode,
+  INSTALL_PROMPT_AVAILABLE_EVENT,
+  getDeferredInstallPrompt,
   isAndroid,
   isInAppBrowser,
   isIos,
@@ -14,6 +16,7 @@ import {
   markOpenAppPromptSeen,
   markPwaInstalled,
   resolveInstallPromptMode,
+  setDeferredInstallPrompt,
 } from '@/lib/pwa/install-utils'
 
 export function InstallAppPrompt() {
@@ -49,13 +52,31 @@ export function InstallAppPrompt() {
   }, [visible])
 
   useEffect(() => {
+    // Pick up a prompt the early head-script may have already captured.
+    setDeferredPrompt(getDeferredInstallPrompt())
+
     const onBeforeInstall = (event: Event) => {
       event.preventDefault()
-      setDeferredPrompt(event as BeforeInstallPromptEvent)
+      const promptEvent = event as BeforeInstallPromptEvent
+      setDeferredInstallPrompt(promptEvent)
+      setDeferredPrompt(promptEvent)
+    }
+    const onAvailable = () => setDeferredPrompt(getDeferredInstallPrompt())
+    const onInstalled = () => {
+      markPwaInstalled()
+      setDeferredInstallPrompt(null)
+      setDeferredPrompt(null)
+      setMode(null)
     }
 
     window.addEventListener('beforeinstallprompt', onBeforeInstall)
-    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall)
+    window.addEventListener(INSTALL_PROMPT_AVAILABLE_EVENT, onAvailable)
+    window.addEventListener('appinstalled', onInstalled)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall)
+      window.removeEventListener(INSTALL_PROMPT_AVAILABLE_EVENT, onAvailable)
+      window.removeEventListener('appinstalled', onInstalled)
+    }
   }, [])
 
   const handleDismiss = useCallback(() => {
@@ -73,6 +94,7 @@ export function InstallAppPrompt() {
         setMode(null)
       }
     } finally {
+      setDeferredInstallPrompt(null)
       setDeferredPrompt(null)
       setInstalling(false)
     }
@@ -159,12 +181,12 @@ export function InstallAppPrompt() {
               <Button
                 type="button"
                 size="sm"
-                className="mt-2 h-8 gap-1.5"
+                className="mt-2 h-9 w-full gap-1.5 font-semibold"
                 disabled={installing}
                 onClick={handleInstall}
               >
-                <Download className="h-3.5 w-3.5" aria-hidden />
-                {installing ? 'Installing…' : 'Install'}
+                <Download className="h-4 w-4" aria-hidden />
+                {installing ? 'Installing…' : 'Install app — one tap'}
               </Button>
             )
           )}
