@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 import L from "leaflet";
-import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
 type LocationMapPickerProps = {
   center: [number, number];
@@ -10,12 +11,68 @@ type LocationMapPickerProps = {
   onSelect: (position: [number, number]) => void;
 };
 
-function ClickToPin({ onSelect }: { onSelect: (position: [number, number]) => void }) {
+import { mapInteractionGuard } from "./location-map-guard";
+
+function MapInteractionFix() {
+  const map = useMap();
+
+  React.useEffect(() => {
+    const container = map.getContainer();
+
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+
+    container.style.touchAction = "none";
+    map.dragging.enable();
+
+    const markInteractionStart = () => {
+      mapInteractionGuard.active = true;
+    };
+
+    const markInteractionEnd = () => {
+      mapInteractionGuard.active = false;
+    };
+
+    const stopBubble = (event: Event) => {
+      event.stopPropagation();
+    };
+
+    container.addEventListener("mousedown", markInteractionStart);
+    container.addEventListener("mouseup", markInteractionEnd);
+    container.addEventListener("mouseleave", markInteractionEnd);
+    container.addEventListener("touchstart", markInteractionStart, { passive: true });
+    container.addEventListener("touchend", markInteractionEnd);
+    container.addEventListener("touchcancel", markInteractionEnd);
+    container.addEventListener("mousedown", stopBubble);
+    container.addEventListener("touchstart", stopBubble, { passive: true });
+    container.addEventListener("touchmove", stopBubble, { passive: true });
+
+    return () => {
+      mapInteractionGuard.active = false;
+      container.style.touchAction = "";
+      container.removeEventListener("mousedown", markInteractionStart);
+      container.removeEventListener("mouseup", markInteractionEnd);
+      container.removeEventListener("mouseleave", markInteractionEnd);
+      container.removeEventListener("touchstart", markInteractionStart);
+      container.removeEventListener("touchend", markInteractionEnd);
+      container.removeEventListener("touchcancel", markInteractionEnd);
+      container.removeEventListener("mousedown", stopBubble);
+      container.removeEventListener("touchstart", stopBubble);
+      container.removeEventListener("touchmove", stopBubble);
+    };
+  }, [map]);
+
+  return null;
+}
+
+function DragToSetPin({ onSelect }: { onSelect: (position: [number, number]) => void }) {
+  const map = useMap();
+
   useMapEvents({
-    click: (event) => {
-      const latitude = Number(event.latlng.lat.toFixed(6));
-      const longitude = Number(event.latlng.lng.toFixed(6));
-      onSelect([longitude, latitude]);
+    dragend: () => {
+      mapInteractionGuard.active = false;
+      const { lat, lng } = map.getCenter();
+      onSelect([Number(lng.toFixed(6)), Number(lat.toFixed(6))]);
     },
   });
 
@@ -24,11 +81,24 @@ function ClickToPin({ onSelect }: { onSelect: (position: [number, number]) => vo
 
 function RecenterMap({ center }: { center: [number, number] }) {
   const map = useMap();
+  const centerKey = `${center[0].toFixed(6)},${center[1].toFixed(6)}`;
+  const appliedKeyRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
+    if (mapInteractionGuard.active) return;
+    if (appliedKeyRef.current === centerKey) return;
+
+    const current = map.getCenter();
+    const alreadyCentered =
+      Math.abs(current.lat - center[0]) < 1e-5 && Math.abs(current.lng - center[1]) < 1e-5;
+
+    appliedKeyRef.current = centerKey;
+
     map.invalidateSize({ animate: false });
-    map.setView(center);
-  }, [center, map]);
+    if (!alreadyCentered) {
+      map.setView(center, map.getZoom(), { animate: false });
+    }
+  }, [center, centerKey, map]);
 
   return null;
 }
@@ -43,16 +113,12 @@ function InvalidateMapSize() {
 
   React.useEffect(() => {
     const fix = () => {
+      if (mapInteractionGuard.active) return;
       map.invalidateSize({ animate: false });
     };
 
     fix();
     const raf = requestAnimationFrame(fix);
-    // Spread invalidations across a wider window to cover:
-    //   50ms - immediate layout settle
-    //   250ms - typical CSS transition duration
-    //   500ms - modal animation on slower devices
-    //   1000ms - last-resort for very slow mobile (low-end Android, older iOS)
     const t1 = window.setTimeout(fix, 50);
     const t2 = window.setTimeout(fix, 250);
     const t3 = window.setTimeout(fix, 500);
@@ -75,63 +141,57 @@ function InvalidateMapSize() {
   return null;
 }
 
-export function LocationMapPicker({ center, selected, onSelect }: LocationMapPickerProps) {
-  const mapCenter: [number, number] = [center[1], center[0]];
-  const selectedLongitude = selected?.[0] ?? center[0];
-  const selectedLatitude = selected?.[1] ?? center[1];
-  const selectedMarker = React.useMemo<[number, number]>(
-    () => [selectedLatitude, selectedLongitude],
-    [selectedLatitude, selectedLongitude],
-  );
-  const [markerPosition, setMarkerPosition] = React.useState<[number, number]>(selectedMarker);
+function CenterPinOverlay() {
+  const map = useMap();
+  const [container, setContainer] = React.useState<HTMLElement | null>(null);
 
   React.useEffect(() => {
-    setMarkerPosition(selectedMarker);
-  }, [selectedMarker]);
+    setContainer(map.getContainer());
+  }, [map]);
 
-  const pinIcon = React.useMemo(
-    () =>
-      L.divIcon({
-        className: "aeris-location-pin",
-        iconSize: [28, 36],
-        iconAnchor: [14, 35],
-        html: `
-          <div style="position:relative;width:28px;height:36px;">
-            <div style="position:absolute;top:0;left:3px;width:22px;height:22px;border-radius:9999px;background:#ef4444;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);"></div>
-            <div style="position:absolute;bottom:0;left:11px;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:12px solid #ef4444;"></div>
-          </div>
-        `,
-      }),
-    [],
+  if (!container) return null;
+
+  return createPortal(
+    <div
+      className="pointer-events-none absolute inset-0 z-[401] flex items-center justify-center"
+      style={{ pointerEvents: "none" }}
+      aria-hidden
+    >
+      <div className="relative h-9 w-7 -translate-y-[35%]">
+        <div className="absolute left-[3px] top-0 h-[22px] w-[22px] rounded-full border-2 border-white bg-red-500 shadow-[0_2px_6px_rgba(0,0,0,0.35)]" />
+        <div className="absolute bottom-0 left-[11px] h-0 w-0 border-x-4 border-t-[12px] border-x-transparent border-t-red-500" />
+      </div>
+    </div>,
+    container,
   );
+}
+
+export function LocationMapPicker({ center, selected, onSelect }: LocationMapPickerProps) {
+  const mapCenter = React.useMemo<[number, number]>(
+    () => [selected?.[1] ?? center[1], selected?.[0] ?? center[0]],
+    [center, selected],
+  );
+  const initialCenterRef = React.useRef(mapCenter);
 
   return (
-    <MapContainer
-      center={mapCenter}
-      zoom={13}
-      // Disable scroll-wheel zoom to prevent it from stealing page scroll on
-      // desktop, and to avoid conflicting with touch-scroll on mobile Safari /
-      // Android WebView. Users can still zoom with pinch-to-zoom.
-      scrollWheelZoom={false}
-      className="z-0 h-56 min-h-56 w-full rounded-md border border-border"
-    >
-      <InvalidateMapSize />
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      <RecenterMap center={mapCenter} />
-      <ClickToPin
-        onSelect={(position) => {
-          setMarkerPosition([position[1], position[0]]);
-          onSelect(position);
-        }}
-      />
-      <Marker
-        position={markerPosition}
-        icon={pinIcon}
-        draggable={false}
-      />
-    </MapContainer>
+    <div className="relative touch-none overscroll-none">
+      <MapContainer
+        center={initialCenterRef.current}
+        zoom={13}
+        dragging
+        scrollWheelZoom={false}
+        className="z-0 h-56 min-h-56 w-full touch-none cursor-grab rounded-md border border-border active:cursor-grabbing"
+      >
+        <MapInteractionFix />
+        <InvalidateMapSize />
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <RecenterMap center={mapCenter} />
+        <DragToSetPin onSelect={onSelect} />
+        <CenterPinOverlay />
+      </MapContainer>
+    </div>
   );
 }

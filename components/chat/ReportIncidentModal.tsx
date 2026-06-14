@@ -2,12 +2,31 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { ImagePlus, Loader2, LocateFixed, Search, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  ImagePlus,
+  Loader2,
+  LocateFixed,
+  Search,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getAnonymousSessionId } from "@/lib/utils/anonymous-session";
 import { cn } from "@/lib/utils";
+import { getAnonymousSessionId } from "@/lib/utils/anonymous-session";
+import { mapInteractionGuard } from "./location-map-guard";
 import aerisAdsBanner from "@/assets/ads_v1_2026.gif";
+import bagyoLogo from "@/assets/Bagyo Logo@5x.png";
+import aerisAgentAvatar from "@/assets/AERIS_char.svg";
+
+/** Draft details detected by AERIS, used to prefill the report form. */
+export type ReportInitialDraft = {
+  category?: string;
+  description?: string;
+  locationHint?: string | null;
+};
 
 type ReportIncidentModalProps = {
   isOpen: boolean;
@@ -16,17 +35,59 @@ type ReportIncidentModalProps = {
   onSubmitted?: () => void;
   initialPhotoFile?: File | null;
   onInitialPhotoConsumed?: () => void;
+  /** Prefill the form from an AERIS-detected incident draft. */
+  initialDraft?: ReportInitialDraft | null;
+  onInitialDraftConsumed?: () => void;
+  /** When true, run the step-by-step walkthrough after the modal opens. */
+  startTutorial?: boolean;
 };
 
-const CATEGORIES = [
-  { value: "flood", label: "Flood" },
-  { value: "landslide", label: "Landslide" },
-  { value: "stranded", label: "Stranded / Rescue Needed" },
-  { value: "SOS", label: "SOS / Life Threat" },
-  { value: "infra_damage", label: "Infrastructure Damage" },
-  { value: "power_out", label: "Power Outage" },
-  { value: "road_closed", label: "Road Closed" },
+type TutorialTarget = "category" | "location" | "photo" | "description" | "submit";
+
+type TutorialStep = {
+  target: TutorialTarget;
+  title: string;
+  body: string;
+};
+
+const TUTORIAL_STEPS: TutorialStep[] = [
+  {
+    target: "category",
+    title: "Step 1 · Situation type",
+    body: "Pick the option that best matches what's happening. AERIS pre-selected one based on your message — change it if needed.",
+  },
+  {
+    target: "location",
+    title: "Step 2 · Location",
+    body: "We auto-detect your location. Drag the map or search an address to pin the exact spot for responders.",
+  },
+  {
+    target: "photo",
+    title: "Step 3 · Photo evidence",
+    body: "Add a photo if it's safe. Photos help operators verify the situation faster.",
+  },
+  {
+    target: "description",
+    title: "Step 4 · Description",
+    body: "Briefly describe what's happening — landmarks, how urgent it is, and any visible risks.",
+  },
+  {
+    target: "submit",
+    title: "Step 5 · Send",
+    body: "Tap Send report when you're ready. You can verify your phone later from the Report Inbox.",
+  },
 ];
+
+const CATEGORIES = [
+  { value: "flood", label: "Flood", emoji: "🌊", dotColor: "bg-blue-500" },
+  { value: "landslide", label: "Landslide", emoji: "⛰️", dotColor: "bg-amber-700" },
+  { value: "stranded", label: "Stranded / Rescue Needed", emoji: "🆘", dotColor: "bg-orange-500" },
+  { value: "SOS", label: "SOS / Life Threat", emoji: "🚨", dotColor: "bg-red-500" },
+  { value: "infra_damage", label: "Infrastructure Damage", emoji: "🏚️", dotColor: "bg-amber-600" },
+  { value: "power_out", label: "Power Outage", emoji: "⚡", dotColor: "bg-yellow-400" },
+  { value: "road_closed", label: "Road Closed", emoji: "🚧", dotColor: "bg-yellow-500" },
+  { value: "other", label: "Other", emoji: "📍", dotColor: "bg-gray-400" },
+] as const;
 
 type FormState = {
   category: string;
@@ -55,6 +116,8 @@ type SubmittedReport = {
   id: string;
   messageId?: string;
 };
+
+type ReportFieldHint = "description" | "location";
 
 const IP_LOCATION_ACCURACY_M = 25000
 const IP_LOCATION_CACHE_KEY = 'aeris_ip_location_cache'
@@ -360,9 +423,23 @@ export function ReportIncidentModal({
   onSubmitted,
   initialPhotoFile,
   onInitialPhotoConsumed,
+  initialDraft,
+  onInitialDraftConsumed,
+  startTutorial,
 }: ReportIncidentModalProps) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [tutorialStep, setTutorialStep] = useState<number | null>(null);
+  const categorySectionRef = useRef<HTMLDivElement>(null);
+  const locationSectionRef = useRef<HTMLDivElement>(null);
+  const photoSectionRef = useRef<HTMLDivElement>(null);
+  const descriptionSectionRef = useRef<HTMLLabelElement>(null);
+  const submitSectionRef = useRef<HTMLDivElement>(null);
+  const draftAppliedRef = useRef(false);
   const [status, setStatus] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
+  const [fieldHint, setFieldHint] = useState<{
+    field: ReportFieldHint;
+    message: string;
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [locating, setLocating] = useState(false);
   const [submittedReport, setSubmittedReport] = useState<SubmittedReport | null>(null);
@@ -438,7 +515,7 @@ export function ReportIncidentModal({
 
   const applyDetectedLocation = useCallback((location: DetectedLocation) => {
     setForm((current) => {
-      if (current.locationSource === "manual") {
+      if (current.locationSource === "manual" || mapInteractionGuard.active) {
         return current;
       }
 
@@ -618,23 +695,129 @@ export function ReportIncidentModal({
     setLocationQuery(form.detectedLocationLabel);
   }, [form.detectedLocationLabel]);
 
+  // Prefill the form from an AERIS-detected incident draft (category +
+  // description). Applied once per open so it never clobbers user edits.
+  useEffect(() => {
+    if (!isOpen) {
+      draftAppliedRef.current = false;
+      return;
+    }
+    if (draftAppliedRef.current || !initialDraft) return;
+    draftAppliedRef.current = true;
+
+    const validCategory = CATEGORIES.some((c) => c.value === initialDraft.category);
+    setForm((current) => ({
+      ...current,
+      category: validCategory ? (initialDraft.category as string) : current.category,
+      description: initialDraft.description?.trim()
+        ? initialDraft.description.trim()
+        : current.description,
+    }));
+    if (initialDraft.locationHint && initialDraft.locationHint.trim()) {
+      setLocationQuery(initialDraft.locationHint.trim());
+    }
+    onInitialDraftConsumed?.();
+  }, [isOpen, initialDraft, onInitialDraftConsumed]);
+
+  // Kick off the guided walkthrough once the modal is open.
+  useEffect(() => {
+    if (isOpen && startTutorial) {
+      setTutorialStep(0);
+    }
+  }, [isOpen, startTutorial]);
+
+  // When closed, clear the walkthrough so it doesn't resume unexpectedly.
+  useEffect(() => {
+    if (!isOpen) {
+      setTutorialStep(null);
+      setFieldHint(null);
+    }
+  }, [isOpen]);
+
+  // Scroll the highlighted section into view as the walkthrough advances.
+  useEffect(() => {
+    if (tutorialStep === null) return;
+    const target = TUTORIAL_STEPS[tutorialStep]?.target;
+    const node: HTMLElement | null =
+      target === "category"
+        ? categorySectionRef.current
+        : target === "location"
+          ? locationSectionRef.current
+          : target === "photo"
+            ? photoSectionRef.current
+            : target === "description"
+              ? descriptionSectionRef.current
+              : target === "submit"
+                ? submitSectionRef.current
+                : null;
+    node?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [tutorialStep]);
+
+  const showFieldHelp = useCallback((hint: { field: ReportFieldHint; message: string }) => {
+    setFieldHint(hint);
+    setStatus(null);
+
+    const targetRef =
+      hint.field === "description" ? descriptionSectionRef : locationSectionRef;
+    targetRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
+  useEffect(() => {
+    if (fieldHint?.field === "description" && form.description.trim()) {
+      setFieldHint(null);
+    }
+    if (fieldHint?.field === "location" && form.position) {
+      setFieldHint(null);
+    }
+  }, [form.description, form.position, fieldHint]);
+
   if (!isOpen) return null;
+
+  const activeTutorial = tutorialStep !== null ? TUTORIAL_STEPS[tutorialStep] : null;
+  const highlightTarget = activeTutorial?.target ?? null;
+  // Spotlight effect: clean ring on the focused section, blur + dim the rest.
+  const sectionTutorialClass = (target: TutorialTarget): string => {
+    if (!activeTutorial) return "";
+    return highlightTarget === target
+      ? "relative z-10 rounded-xl ring-2 ring-primary ring-offset-4 ring-offset-background shadow-lg transition-all duration-300"
+      : "pointer-events-none select-none opacity-40 blur-[2px] transition-all duration-300";
+  };
+
+  const endTutorial = () => setTutorialStep(null);
+  const nextTutorialStep = () =>
+    setTutorialStep((step) =>
+      step === null || step >= TUTORIAL_STEPS.length - 1 ? null : step + 1,
+    );
+  const prevTutorialStep = () =>
+    setTutorialStep((step) => (step === null || step <= 0 ? step : step - 1));
+
+  const fieldHintClass = (field: ReportFieldHint): string =>
+    fieldHint?.field === field
+      ? "rounded-xl ring-2 ring-amber-500 ring-offset-2 ring-offset-background transition-shadow"
+      : "";
 
   const submitReport = async (event: React.FormEvent) => {
     event.preventDefault();
 
     if (!form.description.trim()) {
-      setStatus({ tone: "error", message: "Description is required." });
+      showFieldHelp({
+        field: "description",
+        message: "Add a brief description of what's happening before sending your report.",
+      });
       return;
     }
 
     setSubmitting(true);
+    setFieldHint(null);
     try {
       const detectedLocation = form.position ? null : await detectLocation({ allowBrowserPrompt: true });
       const position = form.position ?? detectedLocation?.position;
 
       if (!position) {
-        setStatus({ tone: "error", message: "Location could not be detected for this report." });
+        showFieldHelp({
+          field: "location",
+          message: "Pin the incident on the map, search an address, or tap Auto-detect to set a location.",
+        });
         return;
       }
 
@@ -757,57 +940,173 @@ export function ReportIncidentModal({
         <div
           className={cn(
             "pointer-events-auto flex w-full max-w-lg flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl",
-            "max-h-[90vh]",
+            "max-h-[90vh] min-h-0",
           )}
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="flex items-center justify-between border-b border-border p-4">
-            <div>
-              <h2 className="text-xl font-bold text-foreground">Submit Disaster Report</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Public reports are sent to the dashboard as unverified intelligence.
-              </p>
+          <div className="border-b border-border px-4 py-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <img
+                  src={typeof bagyoLogo === "string" ? bagyoLogo : bagyoLogo.src}
+                  alt="bagyo.app"
+                  className="h-6 w-auto shrink-0 object-contain"
+                />
+                <h2 className="truncate text-lg font-bold leading-tight text-foreground sm:text-xl">
+                  Submit Disaster Report
+                </h2>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0"
+                onClick={onClose}
+                aria-label="Close report form"
+              >
+                <X className="h-5 w-5" />
+              </Button>
             </div>
-            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close report form">
-              <X className="h-5 w-5" />
-            </Button>
+            <p className="mt-1 text-xs leading-snug text-muted-foreground sm:text-sm">
+              Public reports are sent to the dashboard as unverified intelligence.
+            </p>
           </div>
 
-          <form onSubmit={submitReport} className="space-y-4 overflow-y-auto p-4">
-            <div className="-mx-4 -mt-4 mb-1 overflow-hidden border-b border-border">
+          <form onSubmit={submitReport} className="flex min-h-0 flex-1 flex-col">
+            <div className="flex-1 space-y-4 overflow-y-auto p-4">
+            <div
+              className={cn(
+                "-mx-4 -mt-4 mb-1 overflow-hidden border-b border-border",
+                activeTutorial && "pointer-events-none select-none opacity-40 blur-[2px] transition-all duration-300",
+              )}
+            >
               <img
                 src={typeof aerisAdsBanner === "string" ? aerisAdsBanner : aerisAdsBanner.src}
                 alt="Para sa impormasyon at tulong — disaster information and relief"
                 className="h-auto w-full object-cover object-center"
               />
             </div>
-            <label className="block space-y-1 text-sm">
-              <span className="font-medium">Situation type</span>
-              <select
-                value={form.category}
-                onChange={(event) => setForm({ ...form, category: event.target.value })}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            <div
+              ref={categorySectionRef}
+              className={cn(
+                "space-y-2",
+                sectionTutorialClass("category"),
+              )}
+            >
+              <span className="block text-sm font-medium">Situation type</span>
+              <div className="grid grid-cols-2 gap-2">
+                {CATEGORIES.map((category) => {
+                  const selected = form.category === category.value;
+                  return (
+                    <button
+                      key={category.value}
+                      type="button"
+                      onClick={() => setForm({ ...form, category: category.value })}
+                      aria-pressed={selected}
+                      className={cn(
+                        "flex min-h-[3.25rem] items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors",
+                        "bg-muted/40 hover:bg-muted/70 active:scale-[0.98]",
+                        selected
+                          ? "border-primary bg-primary/10 ring-1 ring-primary/40"
+                          : "border-border",
+                      )}
+                    >
+                      <span
+                        className={cn("h-2 w-2 shrink-0 rounded-full", category.dotColor)}
+                        aria-hidden
+                      />
+                      <span className="shrink-0 text-base leading-none" aria-hidden>
+                        {category.emoji}
+                      </span>
+                      <span className="text-sm font-semibold leading-tight text-foreground">
+                        {category.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div
+              ref={locationSectionRef}
+              className={cn(
+                "space-y-2",
+                fieldHintClass("location"),
+                sectionTutorialClass("location"),
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Location</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void redetectLocation()}
+                  disabled={locating || redetecting}
+                  className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+                >
+                  <LocateFixed className="h-3.5 w-3.5" />
+                  {redetecting ? "Detecting..." : "Auto-detect"}
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  value={locationQuery}
+                  onChange={(event) => setLocationQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void searchAndPinLocation();
+                    }
+                  }}
+                  placeholder="Search or edit address"
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void searchAndPinLocation()}
+                  disabled={searchingLocation}
+                  className="gap-2"
+                >
+                  <Search className="h-4 w-4" />
+                  {searchingLocation ? "Searching..." : "Search"}
+                </Button>
+              </div>
+              <div className="space-y-2 rounded-md border border-border bg-muted/20 p-2">
+                <LocationMapPicker
+                  center={form.position ?? DEFAULT_MAP_CENTER}
+                  selected={form.position}
+                  onSelect={(position) => void pinLocationFromMap(position)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Drag the map to position the pin over the exact house or building.
+                </p>
+              </div>
+              <div
+                className={cn(
+                  "rounded-md border-2 border-primary/45 bg-primary/[0.07] px-2 py-[5px] text-[10px] leading-tight text-muted-foreground shadow-sm",
+                  "ring-1 ring-primary/20 dark:border-primary/55 dark:bg-primary/15 dark:ring-primary/25",
+                )}
               >
-                {CATEGORIES.map((category) => (
-                  <option key={category.value} value={category.value}>
-                    {category.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+                {locating
+                  ? "Detecting location automatically..."
+                  : reverseGeocoding
+                    ? "Resolving pinned location details..."
+                  : form.detectedLocationLabel
+                    ? `${form.detectedLocationLabel}${
+                        form.locationAccuracyM ? `, accuracy about ${form.locationAccuracyM}m` : ""
+                      }`
+                    : "Drag the map or search to set the incident location."}
+              </div>
+            </div>
 
-            <label className="block space-y-1 text-sm">
-              <span className="font-medium">Description</span>
-              <textarea
-                value={form.description}
-                onChange={(event) => setForm({ ...form, description: event.target.value })}
-                maxLength={280}
-                placeholder="What is happening? Include landmarks, urgency, and visible risks."
-                className="min-h-24 w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
-              />
-            </label>
-
-            <div className="space-y-2">
+            <div
+              ref={photoSectionRef}
+              className={cn(
+                "space-y-2",
+                sectionTutorialClass("photo"),
+              )}
+            >
               <span className="block text-sm font-medium">Photo evidence (optional)</span>
               <input
                 ref={photoInputRef}
@@ -861,82 +1160,26 @@ export function ReportIncidentModal({
               </p>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">Location</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void redetectLocation()}
-                  disabled={locating || redetecting}
-                  className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
-                >
-                  <LocateFixed className="h-3.5 w-3.5" />
-                  {redetecting ? "Detecting..." : "Re-detect"}
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  value={locationQuery}
-                  onChange={(event) => setLocationQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      void searchAndPinLocation();
-                    }
-                  }}
-                  placeholder="Search or edit address"
-                  className="flex-1"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void searchAndPinLocation()}
-                  disabled={searchingLocation}
-                  className="gap-2"
-                >
-                  <Search className="h-4 w-4" />
-                  {searchingLocation ? "Searching..." : "Search"}
-                </Button>
-              </div>
-              <div className="space-y-2 rounded-md border border-border bg-muted/20 p-2">
-                <LocationMapPicker
-                  center={form.position ?? DEFAULT_MAP_CENTER}
-                  selected={form.position}
-                  onSelect={(position) => void pinLocationFromMap(position)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Tap the exact house or building on the map to place the pin.
-                </p>
-              </div>
-              <div
-                className={cn(
-                  "rounded-md border-2 border-primary/45 bg-primary/[0.07] px-2 py-[5px] text-[10px] leading-tight text-muted-foreground shadow-sm",
-                  "ring-1 ring-primary/20 dark:border-primary/55 dark:bg-primary/15 dark:ring-primary/25",
-                )}
-              >
-                {locating
-                  ? "Detecting location automatically..."
-                  : reverseGeocoding
-                    ? "Resolving pinned location details..."
-                  : form.detectedLocationLabel
-                    ? `${form.detectedLocationLabel}${
-                        form.locationAccuracyM ? `, accuracy about ${form.locationAccuracyM}m` : ""
-                      }`
-                    : "Use the map pin or search to set the incident location."}
-              </div>
-            </div>
+            <label
+              ref={descriptionSectionRef}
+              className={cn(
+                "block space-y-1 text-sm",
+                fieldHintClass("description"),
+                sectionTutorialClass("description"),
+              )}
+            >
+              <span className="font-medium">Description</span>
+              <textarea
+                value={form.description}
+                onChange={(event) => setForm({ ...form, description: event.target.value })}
+                maxLength={280}
+                placeholder="What is happening? Include landmarks, urgency, and visible risks."
+                className="min-h-24 w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            </label>
 
-            {status && (
-              <p
-                className={cn(
-                  "rounded-md border px-3 py-2 text-sm",
-                  status.tone === "ok"
-                    ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300"
-                    : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
-                )}
-              >
+            {status?.tone === "ok" && (
+              <p className="rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
                 {status.message}
               </p>
             )}
@@ -960,18 +1203,123 @@ export function ReportIncidentModal({
                 </Button>
               </div>
             )}
+            </div>
 
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
-                Close
-              </Button>
-              <Button type="submit" className="flex-1" disabled={submitting}>
-                {submitting ? "Sending..." : "Send report"}
-              </Button>
+            <div
+              ref={submitSectionRef}
+              className={cn(
+                "shrink-0 border-t border-border bg-background p-4",
+                sectionTutorialClass("submit"),
+              )}
+            >
+              {fieldHint && (
+                <div
+                  role="status"
+                  className="mb-3 flex items-start gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200"
+                >
+                  <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <span>{fieldHint.message}</span>
+                </div>
+              )}
+
+              {status?.tone === "error" && (
+                <p className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+                  {status.message}
+                </p>
+              )}
+
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
+                  Close
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1"
+                  disabled={submitting || (locating && !form.position)}
+                >
+                  {submitting ? "Sending..." : locating && !form.position ? "Detecting location..." : "Send report"}
+                </Button>
+              </div>
             </div>
           </form>
         </div>
       </div>
+
+      {/* Guided walkthrough — floating agent avatar + speech bubble. */}
+      {activeTutorial && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[10004] flex justify-center px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)]">
+          <div className="flex w-full max-w-lg items-end gap-1 sm:gap-2">
+            <img
+              src={
+                typeof aerisAgentAvatar === "string"
+                  ? aerisAgentAvatar
+                  : aerisAgentAvatar.src
+              }
+              alt="A.E.R.I.S. agent"
+              className="pointer-events-none h-28 w-auto shrink-0 select-none drop-shadow-2xl sm:h-36"
+            />
+            <div className="pointer-events-auto relative mb-3 flex-1 rounded-2xl border border-primary/40 bg-background/95 p-4 shadow-2xl backdrop-blur-sm">
+              {/* Speech bubble tail pointing to the avatar */}
+              <span
+                aria-hidden
+                className="absolute -left-1.5 bottom-6 h-3 w-3 rotate-45 border-b border-l border-primary/40 bg-background/95"
+              />
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <p className="text-xs font-bold uppercase tracking-wide text-primary">
+                    {activeTutorial.title}
+                  </p>
+                  <p className="mt-1 text-sm leading-snug text-foreground">
+                    {activeTutorial.body}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={endTutorial}
+                  className="-mr-1 -mt-1 shrink-0 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                >
+                  Skip
+                </button>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {(tutorialStep ?? 0) + 1} of {TUTORIAL_STEPS.length}
+                </span>
+                <div className="flex items-center gap-2">
+                  {(tutorialStep ?? 0) > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 gap-1 px-2 text-xs"
+                      onClick={prevTutorialStep}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                      Back
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 gap-1 px-3 text-xs"
+                    onClick={nextTutorialStep}
+                  >
+                    {(tutorialStep ?? 0) >= TUTORIAL_STEPS.length - 1 ? (
+                      "Got it"
+                    ) : (
+                      <>
+                        Next
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {submittedReport && showVerificationPopup && (
         <>
           <div className="fixed inset-0 z-[10002] bg-black/45" />

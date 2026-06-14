@@ -5,7 +5,360 @@ export interface EmergencyHotline {
   area: string;
 }
 
+export type HotlineTier = "quick" | "local" | "regional" | "national" | "other";
+
+export type QuickAccessHotlineIcon =
+  | "radio"
+  | "shield-alert"
+  | "flame"
+  | "shield"
+  | "heart-pulse"
+  | "cross";
+
+export interface QuickAccessHotline {
+  label: string;
+  shortLabel: string;
+  number: string;
+  icon: QuickAccessHotlineIcon;
+}
+
+/** One-tap disaster hotlines for Naga City citizens. */
+export const nagaQuickAccessHotlines: QuickAccessHotline[] = [
+  {
+    label: "Naga City Central Command Center (Comcen)",
+    shortLabel: "Comcen",
+    number: "0963-220-9700",
+    icon: "radio",
+  },
+  {
+    label: "Naga City Disaster Risk Reduction & Management Office (CDRRMO)",
+    shortLabel: "CDRRMO",
+    number: "0947-633-0066",
+    icon: "shield-alert",
+  },
+  {
+    label: "Bureau of Fire Protection (Naga City)",
+    shortLabel: "Fire",
+    number: "0923-083-9429",
+    icon: "flame",
+  },
+  {
+    label: "Naga City Police Office (NCPO)",
+    shortLabel: "Police",
+    number: "0908-325-4787",
+    icon: "shield",
+  },
+  {
+    label: "Bicol Medical Center (BMC) - Emergency",
+    shortLabel: "Hospital",
+    number: "(054) 472-6125",
+    icon: "heart-pulse",
+  },
+  {
+    label: "Philippine Red Cross - Camarines Sur Chapter",
+    shortLabel: "Red Cross",
+    number: "0951-652-4563",
+    icon: "cross",
+  },
+];
+
+const QUICK_ACCESS_AGENCIES = new Set(
+  nagaQuickAccessHotlines.map((entry) => entry.label),
+);
+
+const NATIONAL_DISASTER_AGENCIES = new Set([
+  "Emergency 911 National Office",
+  "National Disaster Risk Reduction Management Council",
+  "PAGASA",
+  "Philippine Institute of Volcanology and Seismology",
+  "Philippine Red Cross",
+  "Philippine Coast Guard",
+  "Department of Social Welfare and Development",
+]);
+
+const TIER_SORT_ORDER: Record<HotlineTier, number> = {
+  quick: 0,
+  local: 1,
+  regional: 2,
+  national: 3,
+  other: 4,
+};
+
+export function getHotlineTier(hotline: EmergencyHotline): HotlineTier {
+  if (hotline.area === "NAGA CITY") {
+    return QUICK_ACCESS_AGENCIES.has(hotline.agency) ? "quick" : "local";
+  }
+  if (hotline.area === "R V") return "regional";
+  if (NATIONAL_DISASTER_AGENCIES.has(hotline.agency)) return "national";
+  return "other";
+}
+
+export function isPrimaryDisasterHotline(hotline: EmergencyHotline): boolean {
+  return getHotlineTier(hotline) !== "other";
+}
+
+export function sortHotlinesForNaga(
+  a: EmergencyHotline,
+  b: EmergencyHotline,
+): number {
+  const tierDiff = TIER_SORT_ORDER[getHotlineTier(a)] - TIER_SORT_ORDER[getHotlineTier(b)];
+  if (tierDiff !== 0) return tierDiff;
+  return a.agency.localeCompare(b.agency);
+}
+
+export function getTopLevelArea(area: string): string {
+  if (area.startsWith("NCR") || area === "PASAY") return "NCR";
+  return area;
+}
+
+export type HotlineRegionFilter =
+  | "naga-city"
+  | "bicol"
+  | "manila-hq"
+  | "luzon"
+  | "visayas"
+  | "mindanao"
+  | "other";
+
+export const HOTLINE_REGION_FILTERS: { id: HotlineRegionFilter; label: string }[] = [
+  { id: "naga-city", label: "Naga City" },
+  { id: "bicol", label: "Bicol Region" },
+  { id: "manila-hq", label: "Manila" },
+  { id: "luzon", label: "Luzon" },
+  { id: "visayas", label: "Visayas" },
+  { id: "mindanao", label: "Mindanao" },
+  { id: "other", label: "Other Regions" },
+];
+
+const BICOL_AREAS = new Set(["R V"]);
+const VISAYAS_AREAS = new Set(["R VI", "R VII", "R VIII"]);
+const MINDANAO_AREAS = new Set([
+  "R IX",
+  "R X",
+  "R XI",
+  "R XII",
+  "R XIII",
+  "BARMM",
+  "CARAGA",
+]);
+const LUZON_AREAS = new Set([
+  "R I",
+  "R II",
+  "R III",
+  "R IV-A",
+  "R IV-B",
+  "CAR",
+]);
+
+function isMetroManilaCityArea(area: string): boolean {
+  return area.startsWith("NCR -") || area === "PASAY";
+}
+
+export function getHotlineRegionFilter(
+  hotline: EmergencyHotline,
+): HotlineRegionFilter {
+  const { area } = hotline;
+
+  if (area === "NAGA CITY") return "naga-city";
+  if (BICOL_AREAS.has(area)) return "bicol";
+  if (area === "NCR") return "manila-hq";
+  if (isMetroManilaCityArea(area)) return "luzon";
+  if (VISAYAS_AREAS.has(area)) return "visayas";
+  if (MINDANAO_AREAS.has(area)) return "mindanao";
+  if (LUZON_AREAS.has(area)) return "luzon";
+  return "other";
+}
+
+export function matchesHotlineRegionFilter(
+  hotline: EmergencyHotline,
+  filter: HotlineRegionFilter,
+): boolean {
+  return getHotlineRegionFilter(hotline) === filter;
+}
+
 export const emergencyHotlines: EmergencyHotline[] = [
+  // ============================================================
+  // NAGA CITY (Camarines Sur, Bicol Region V)
+  // Source: City of Naga official Emergency Hotline page
+  // (www2.naga.gov.ph/emergency-hotline) — updated Aug 22, 2025
+  // ============================================================
+  {
+    agency: "Naga City Central Command Center (Comcen)",
+    hotline: "0963-220-9700",
+    trunkDirectLine: [
+      "0963-220-9700",
+      "0908-525-3000 [Smart]",
+      "0908-885-3000",
+      "0956-776-3000",
+      "(054) 472-3000",
+      "(054) 871-2050 local 3000",
+      "UHF: 406.3000"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "Naga City Disaster Risk Reduction & Management Office (CDRRMO)",
+    hotline: "(054) 205-2980 local 3060",
+    trunkDirectLine: [
+      "(054) 205-2980 local 3060",
+      "0947-633-0066",
+      "(054) 871-2050 local 3060 [PLDT]"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "Naga City Police Office (NCPO)",
+    hotline: "0908-325-4787",
+    trunkDirectLine: [
+      "0908-325-4787",
+      "0908-737-4228"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "Naga City Police Station 6 (Cararayan)",
+    hotline: "0921-475-1636",
+    trunkDirectLine: [
+      "0921-475-1636"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "Bureau of Fire Protection (Naga City)",
+    hotline: "0923-083-9429",
+    trunkDirectLine: [
+      "0923-083-9429",
+      "0920-986-1476"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "Chin Po Tong Volunteer Fire Brigade",
+    hotline: "0910-2968-888",
+    trunkDirectLine: [
+      "0910-2968-888",
+      "0956-811-2000"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "Naga White - Filipino-Chinese Volunteer Firefighters",
+    hotline: "0917-308-1800",
+    trunkDirectLine: [
+      "0917-308-1800"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "Bicol Medical Center (BMC) - Emergency",
+    hotline: "(054) 472-6125 to 31",
+    trunkDirectLine: [
+      "(054) 472-6125 to 31"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "NICC Doctors Hospital",
+    hotline: "(054) 475-0000",
+    trunkDirectLine: [
+      "(054) 475-0000",
+      "0917-894-1647"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "Dr. Nilo O. Roa Memorial Foundation Hospital (Mother Seton)",
+    hotline: "(054) 472-2998",
+    trunkDirectLine: [
+      "(054) 472-2998"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "St. John Hospital, Inc.",
+    hotline: "(054) 472-4521",
+    trunkDirectLine: [
+      "(054) 472-4521"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "Philippine Red Cross - Camarines Sur Chapter",
+    hotline: "143",
+    trunkDirectLine: [
+      "143 [National Hotline]",
+      "0951-652-4563"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "Camarines Sur Electric Cooperative II (CASURECO II)",
+    hotline: "(054) 205-2900",
+    trunkDirectLine: [
+      "(054) 205-2900",
+      "0933-868-4763"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "Metro Naga Water District (MNWD)",
+    hotline: "(054) 206-3040",
+    trunkDirectLine: [
+      "(054) 206-3040",
+      "0919-648-6365 [Smart]",
+      "0967-485-3675 [Globe]",
+      "(054) 473-7813 [Trunk]",
+      "(054) 472-1685 [Trunk]"
+    ],
+    area: "NAGA CITY"
+  },
+  {
+    agency: "Naga City General Services Office (Streetlights)",
+    hotline: "(054) 205-2980 local 3200",
+    trunkDirectLine: [
+      "(054) 205-2980 local 3200",
+      "0948-108-3489"
+    ],
+    area: "NAGA CITY"
+  },
+  // ============================================================
+  // BICOL REGION (Region V) — Regional disaster agencies
+  // ============================================================
+  {
+    agency: "Office of Civil Defense - Region V (OCD-V)",
+    hotline: "(052) 742-1176",
+    trunkDirectLine: [
+      "(052) 742-1176",
+      "(052) 481-5031",
+      "0928-505-3861 [Cell/Viber]"
+    ],
+    area: "R V"
+  },
+  {
+    agency: "Camarines Sur PDRRMO - EDMERO (24/7)",
+    hotline: "0998-576-2071",
+    trunkDirectLine: [
+      "0998-576-2071",
+      "0998-576-2072"
+    ],
+    area: "R V"
+  },
+  {
+    agency: "Camarines Sur One Hospital Command",
+    hotline: "0908-860-6111",
+    trunkDirectLine: [
+      "0908-860-6111"
+    ],
+    area: "R V"
+  },
+  {
+    agency: "PAGASA - Southern Luzon Regional Services (Legazpi)",
+    hotline: "(052) 481-4454",
+    trunkDirectLine: [
+      "(052) 481-4454"
+    ],
+    area: "R V"
+  },
   // National Agencies - NCR
   {
     agency: "Emergency 911 National Office",
