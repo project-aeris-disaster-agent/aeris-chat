@@ -19,7 +19,9 @@ function MapInteractionFix() {
   React.useEffect(() => {
     const container = map.getContainer();
 
-    L.DomEvent.disableClickPropagation(container);
+    // Keep the map's own drag/scroll from bubbling to the modal's scroll
+    // container, but DON'T add extra stopPropagation listeners — those can
+    // swallow the pointer events Leaflet needs to start a drag.
     L.DomEvent.disableScrollPropagation(container);
 
     container.style.touchAction = "none";
@@ -28,51 +30,44 @@ function MapInteractionFix() {
     const markInteractionStart = () => {
       mapInteractionGuard.active = true;
     };
-
     const markInteractionEnd = () => {
       mapInteractionGuard.active = false;
     };
 
-    const stopBubble = (event: Event) => {
-      event.stopPropagation();
-    };
-
-    container.addEventListener("mousedown", markInteractionStart);
-    container.addEventListener("mouseup", markInteractionEnd);
-    container.addEventListener("mouseleave", markInteractionEnd);
-    container.addEventListener("touchstart", markInteractionStart, { passive: true });
-    container.addEventListener("touchend", markInteractionEnd);
-    container.addEventListener("touchcancel", markInteractionEnd);
-    container.addEventListener("mousedown", stopBubble);
-    container.addEventListener("touchstart", stopBubble, { passive: true });
-    container.addEventListener("touchmove", stopBubble, { passive: true });
+    map.on("movestart", markInteractionStart);
+    map.on("moveend", markInteractionEnd);
 
     return () => {
       mapInteractionGuard.active = false;
       container.style.touchAction = "";
-      container.removeEventListener("mousedown", markInteractionStart);
-      container.removeEventListener("mouseup", markInteractionEnd);
-      container.removeEventListener("mouseleave", markInteractionEnd);
-      container.removeEventListener("touchstart", markInteractionStart);
-      container.removeEventListener("touchend", markInteractionEnd);
-      container.removeEventListener("touchcancel", markInteractionEnd);
-      container.removeEventListener("mousedown", stopBubble);
-      container.removeEventListener("touchstart", stopBubble);
-      container.removeEventListener("touchmove", stopBubble);
+      map.off("movestart", markInteractionStart);
+      map.off("moveend", markInteractionEnd);
     };
   }, [map]);
 
   return null;
 }
 
-function DragToSetPin({ onSelect }: { onSelect: (position: [number, number]) => void }) {
+function SetPinOnInteraction({ onSelect }: { onSelect: (position: [number, number]) => void }) {
   const map = useMap();
 
+  const commitCenter = React.useCallback(() => {
+    mapInteractionGuard.active = false;
+    const { lat, lng } = map.getCenter();
+    onSelect([Number(lng.toFixed(6)), Number(lat.toFixed(6))]);
+  }, [map, onSelect]);
+
   useMapEvents({
-    dragend: () => {
-      mapInteractionGuard.active = false;
-      const { lat, lng } = map.getCenter();
-      onSelect([Number(lng.toFixed(6)), Number(lat.toFixed(6))]);
+    // Drag the map → the center pin marks the spot.
+    dragend: commitCenter,
+    // Tap/click → recenter on that point and drop the pin there. Restores the
+    // original tap-to-pin behaviour alongside the drag interaction.
+    click: (event) => {
+      mapInteractionGuard.active = true;
+      map.panTo(event.latlng);
+      const lng = Number(event.latlng.lng.toFixed(6));
+      const lat = Number(event.latlng.lat.toFixed(6));
+      onSelect([lng, lat]);
     },
   });
 
@@ -189,7 +184,7 @@ export function LocationMapPicker({ center, selected, onSelect }: LocationMapPic
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <RecenterMap center={mapCenter} />
-        <DragToSetPin onSelect={onSelect} />
+        <SetPinOnInteraction onSelect={onSelect} />
         <CenterPinOverlay />
       </MapContainer>
     </div>

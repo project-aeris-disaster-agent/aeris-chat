@@ -191,7 +191,7 @@ export async function detectUserLocation(options?: {
 }
 
 export function buildBannerMetadataLine(): string {
-  return "Philippines · Live · Disaster Resilience · Application";
+  return "Disaster Resilience AI Agent Application";
 }
 
 export async function buildLocationDisplayLine(
