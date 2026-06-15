@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { Message } from '@/types/user'
 import { MessageItem } from './MessageItem'
 import { IncidentDraftCard, type IncidentDraftCardStatus } from './IncidentDraftCard'
@@ -28,7 +29,7 @@ interface MessageListProps {
   onOpenForecast?: () => void
 }
 
-export function MessageList({
+function MessageListComponent({
   messages,
   isLoading,
   selectedColors,
@@ -84,4 +85,6 @@ export function MessageList({
     </div>
   )
 }
+
+export const MessageList = memo(MessageListComponent)
 

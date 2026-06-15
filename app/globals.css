@@ -582,3 +582,20 @@ body {
   }
 }
 
+/*
+ * Respect the OS "Reduce Motion" setting. This neutralizes the always-on
+ * infinite gradient/blob animations (CHAT SUPPORT title, SOS button, welcome
+ * bubble, loaders) that otherwise run continuously and drain battery / cause
+ * jank on iOS Safari.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

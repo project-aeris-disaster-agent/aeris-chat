@@ -1,5 +1,6 @@
 'use client'
 
+import { memo, useMemo } from 'react'
 import { Message } from '@/types/user'
 import { formatTime } from '@/lib/utils/format'
 import ReactMarkdown from 'react-markdown'
@@ -8,6 +9,39 @@ import rehypeHighlight from 'rehype-highlight'
 import { FollowUpActions, type FollowUpAction } from './FollowUpActions'
 import { Headset, ShieldAlert, CheckCircle2 } from 'lucide-react'
 import { enrichChildren, type MessageEnrichHandlers } from '@/lib/chat/message-enrichment'
+
+// Plugin arrays are hoisted so they keep a stable identity across renders and
+// never cause ReactMarkdown to re-run unnecessarily.
+const REMARK_PLUGINS = [remarkGfm]
+const REHYPE_PLUGINS = [rehypeHighlight]
+
+// Building the components map is cheap, but recreating it inline on every render
+// defeats ReactMarkdown's internal memoization, so we build it once per handler.
+function createMarkdownComponents(handlers: MessageEnrichHandlers) {
+  return {
+    p: ({ children }: any) => <p>{enrichChildren(children, handlers, 'p')}</p>,
+    li: ({ children }: any) => <li>{enrichChildren(children, handlers, 'li')}</li>,
+    td: ({ children }: any) => <td>{enrichChildren(children, handlers, 'td')}</td>,
+    strong: ({ children }: any) => (
+      <strong>{enrichChildren(children, handlers, 'strong')}</strong>
+    ),
+    em: ({ children }: any) => <em>{enrichChildren(children, handlers, 'em')}</em>,
+    code: ({ node, inline, className, children, ...props }: any) => {
+      const match = /language-(\w+)/.exec(className || '')
+      return !inline && match ? (
+        <pre className="bg-gray-900 rounded p-4 overflow-x-auto">
+          <code className={className} {...props}>
+            {children}
+          </code>
+        </pre>
+      ) : (
+        <code className="bg-gray-100 px-1 py-0.5 rounded text-sm dark:bg-gray-800" {...props}>
+          {children}
+        </code>
+      )
+    },
+  }
+}
 
 interface MessageItemProps {
   message: Message
@@ -50,7 +84,7 @@ function readString(metadata: unknown, key: string): string | undefined {
   return typeof value === 'string' ? value : undefined
 }
 
-export function MessageItem({
+function MessageItemComponent({
   message,
   selectedColors,
   onOpenHotlines,
@@ -61,7 +95,28 @@ export function MessageItem({
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
   const kind = readKind(message.metadata)
-  const enrichHandlers: MessageEnrichHandlers = { onOpenForecast }
+  const markdownComponents = useMemo(
+    () => createMarkdownComponents({ onOpenForecast }),
+    [onOpenForecast],
+  )
+
+  // The markdown parse + syntax highlight is the single most expensive per-message
+  // operation; memoizing on the raw content means it only re-runs when the text
+  // actually changes, not when an unrelated sibling message updates.
+  const renderedContent = useMemo(() => {
+    if (!isAssistant) {
+      return <p className="whitespace-pre-wrap">{message.content}</p>
+    }
+    return (
+      <ReactMarkdown
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
+        components={markdownComponents}
+      >
+        {message.content}
+      </ReactMarkdown>
+    )
+  }, [isAssistant, message.content, markdownComponents])
 
   const getBorderColor = () => {
     if (!selectedColors || selectedColors.length === 0) {
@@ -122,47 +177,7 @@ export function MessageItem({
         )}
 
         <div className="prose prose-sm max-w-none">
-          {isAssistant ? (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeHighlight]}
-              components={{
-                p: ({ children }: any) => (
-                  <p>{enrichChildren(children, enrichHandlers, 'p')}</p>
-                ),
-                li: ({ children }: any) => (
-                  <li>{enrichChildren(children, enrichHandlers, 'li')}</li>
-                ),
-                td: ({ children }: any) => (
-                  <td>{enrichChildren(children, enrichHandlers, 'td')}</td>
-                ),
-                strong: ({ children }: any) => (
-                  <strong>{enrichChildren(children, enrichHandlers, 'strong')}</strong>
-                ),
-                em: ({ children }: any) => (
-                  <em>{enrichChildren(children, enrichHandlers, 'em')}</em>
-                ),
-                code: ({ node, inline, className, children, ...props }: any) => {
-                  const match = /language-(\w+)/.exec(className || '')
-                  return !inline && match ? (
-                    <pre className="bg-gray-900 rounded p-4 overflow-x-auto">
-                      <code className={className} {...props}>
-                        {children}
-                      </code>
-                    </pre>
-                  ) : (
-                    <code className="bg-gray-100 px-1 py-0.5 rounded text-sm dark:bg-gray-800" {...props}>
-                      {children}
-                    </code>
-                  )
-                },
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
-          ) : (
-            <p className="whitespace-pre-wrap">{message.content}</p>
-          )}
+          {renderedContent}
         </div>
 
         {kind === 'urgent-followup' && (
@@ -183,3 +198,5 @@ export function MessageItem({
     </div>
   )
 }
+
+export const MessageItem = memo(MessageItemComponent)

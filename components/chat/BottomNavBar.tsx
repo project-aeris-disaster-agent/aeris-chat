@@ -50,7 +50,8 @@ export function AdBanner({ className }: { className?: string }) {
           width={600}
           height={68}
           unoptimized
-          priority
+          loading="lazy"
+          decoding="async"
           sizes="(max-width: 896px) 100vw, 896px"
           className="block h-auto w-full min-w-0 object-contain"
         />

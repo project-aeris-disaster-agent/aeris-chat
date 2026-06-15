@@ -43,6 +43,7 @@ import { useChat } from "@/hooks/useChat";
 import { useSessions } from "@/hooks/useSessions";
 import { toChatLocationPayload } from "@/lib/chat/location-payload";
 import { detectIncidentIntent, type DraftIncidentReport } from "@/lib/incidents/intent";
+import { isIos } from "@/lib/pwa/install-utils";
 
 type DraftApiResponse = {
   matched: boolean;
@@ -51,6 +52,10 @@ type DraftApiResponse = {
   missingSlots?: string[];
   nextQuestion?: string | null;
 };
+
+// Stable identity so memoized children (MessageList/MessageItem) are not forced
+// to re-render just because a fresh array was allocated each render.
+const SELECTED_COLORS: number[][] = [[135, 206, 250]];
 
 async function fetchIncidentDraft(input: {
   message: string;
@@ -90,8 +95,11 @@ export function Chatbot() {
   const [reportInboxRefreshKey, setReportInboxRefreshKey] = React.useState(0);
 
   const [mousePosition, setMousePosition] = React.useState<{ x: number; y: number } | null>(null);
+  // Mirrors whether the shader is actually on screen so pointer tracking can
+  // skip React state updates (and re-renders) when nothing consumes them.
+  const shaderActiveRef = React.useRef(false);
 
-  const selectedColors: number[][] = [[135, 206, 250]];
+  const selectedColors = SELECTED_COLORS;
 
   const animationSettings: AnimationSettings = {
     animationSpeed: 0.5,
@@ -105,7 +113,6 @@ export function Chatbot() {
   };
 
   const [errorPopup, setErrorPopup] = React.useState<{ message: string; detail?: string } | null>(null);
-  const [animationKey, setAnimationKey] = React.useState(0); // Key to force animation restart
   const [animationOpacity, setAnimationOpacity] = React.useState(1); // Control fade-out
 
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -130,15 +137,46 @@ export function Chatbot() {
   const [pendingIntents, setPendingIntents] = React.useState<string[]>([]);
   const draftFetchedForMessageId = React.useRef<Set<string>>(new Set());
   const [prefersReducedMotion, setPrefersReducedMotion] = React.useState(false);
+  // iOS Safari is the most fragile WebGL host (hard limit on active contexts +
+  // aggressive throttling), so we skip the GPU shader entirely there and fall
+  // back to a cheap static gradient.
+  const [isIOSDevice, setIsIOSDevice] = React.useState(false);
+  const shaderDisabled = prefersReducedMotion || isIOSDevice;
 
   // Chat hooks
   const { sessions, createSession, isLoading: sessionsLoading } = useSessions();
-  const { messages, sendMessage, isLoading: messagesLoading, isSending: isAwaitingReply } = useChat(currentSessionId);
+  const { messages, sendMessage, isLoading: messagesLoading } = useChat(currentSessionId);
   const { metadataLine, locationLine, isDetecting, hasAccurateLocation, detectedLocation, redetect } = useBannerLocation();
 
-  // Auto-scroll to bottom when messages change
+  const didInitialScrollRef = React.useRef(false);
+
+  // Auto-scroll to bottom when messages change. We scroll the actual Radix
+  // ScrollArea viewport (scrollIntoView on a child is unreliable/janky on iOS),
+  // jump instantly on first load, and only smooth-scroll afterwards when the
+  // user is already near the bottom so we never yank them away from history.
   React.useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const anchor = messagesEndRef.current;
+    if (!anchor) return;
+    const viewport = anchor.closest(
+      '[data-radix-scroll-area-viewport]',
+    ) as HTMLElement | null;
+
+    if (!viewport) {
+      anchor.scrollIntoView();
+      return;
+    }
+
+    if (!didInitialScrollRef.current) {
+      viewport.scrollTop = viewport.scrollHeight;
+      didInitialScrollRef.current = true;
+      return;
+    }
+
+    const distanceFromBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    if (distanceFromBottom < 160) {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' });
+    }
   }, [messages]);
 
   // Phase 5.1: mark already-drafted messages on session load so we don't
@@ -173,7 +211,10 @@ export function Chatbot() {
     for (const content of pendingIntents) {
       const trimmed = content.trim();
       const match = [...messages].reverse().find(
-        (m) => m.role === 'user' && m.content.trim() === trimmed,
+        (m) =>
+          m.role === 'user' &&
+          m.content.trim() === trimmed &&
+          !m.id.startsWith('optimistic-'),
       );
       if (!match) {
         remaining.push(content);
@@ -211,6 +252,14 @@ export function Chatbot() {
     media.addEventListener("change", syncMotionPreference);
     return () => media.removeEventListener("change", syncMotionPreference);
   }, []);
+
+  React.useEffect(() => {
+    setIsIOSDevice(isIos());
+  }, []);
+
+  React.useEffect(() => {
+    shaderActiveRef.current = hovered && !shaderDisabled;
+  }, [hovered, shaderDisabled]);
 
   // Initialize session on mount
   React.useEffect(() => {
@@ -272,6 +321,18 @@ export function Chatbot() {
     setDetectedDraft(null);
   }, []);
 
+  // Stable handlers passed into the memoized MessageList so it only re-renders
+  // when the messages themselves change.
+  const handleOpenHotlines = React.useCallback(() => setIsHotlinesModalOpen(true), []);
+  const handleOpenReportInbox = React.useCallback(() => setIsReportInboxOpen(true), []);
+  const handleOpenForecast = React.useCallback(() => setIsForecastPanelOpen(true), []);
+  const handleStatusUpdate = React.useCallback((reportId: string | undefined) => {
+    if (!reportId) return;
+    setMessageInput((prev) =>
+      prev ? prev : `Status update for report ${reportId.slice(0, 8)}: `,
+    );
+  }, []);
+
   const triggerBackgroundAnimation = React.useCallback(() => {
     setHovered(false);
     setAnimationOpacity(1); // Reset opacity when starting new animation
@@ -290,45 +351,27 @@ export function Chatbot() {
     animationRafRef.current = requestAnimationFrame(() => {
       setHovered(true);
       animationRafRef.current = null;
-      
-      // Calculate animation duration based on shader intro animation
-      // The intro animation reveals from center outward:
-      // intro_offset = distance(u_resolution / 2.0 / u_total_size, st2) * 0.01 + (random(st2) * 0.15)
-      // Animation reveals when: u_time * animation_speed_factor >= intro_offset
-      // 
-      // For full screen reveal, we need to wait until the furthest corner is revealed.
-      // The maximum intro_offset depends on screen size:
-      // - Distance component: corner distance from center in grid cells * 0.01
-      //   For large screens (1920x1080), this can be 1.0-3.0+ depending on u_total_size (default 4)
-      // - Random component: up to 0.15
-      // 
-      // To ensure the animation fully fills the screen before restarting, we use a longer duration.
-      // With default animationSpeed of 0.5, we want at least 3-4 seconds for full reveal.
-      // Formula: (maxIntroOffset / animationSpeed) * 1000ms + buffer
-      // Using 1.5 as maxIntroOffset gives: (1.5 / 0.5) * 1000 = 3000ms base, + 2000ms buffer = 5000ms total
-      const maxIntroOffset = 1.5; // Increased to ensure full screen coverage for all screen sizes
+
+      // Play the reveal once, fade out, then hide. The shader itself freezes
+      // its WebGL frame loop after the reveal (see canvas-effect), so there is
+      // no need to remount or recursively restart the animation here. The old
+      // infinite restart loop kept creating new WebGL contexts, which iOS
+      // Safari throttles/discards once too many are active.
+      const maxIntroOffset = 1.5;
       const baseDuration = (maxIntroOffset / animationSettings.animationSpeed) * 1000;
-      const buffer = 2000; // 2 second buffer to ensure full reveal completes
+      const buffer = 2000;
       const animationDuration = baseDuration + buffer;
-      
-      // Fade out animation before restarting
-      const fadeOutDuration = 800; // 0.8 seconds for fade-out
+
+      const fadeOutDuration = 800;
       const fadeOutStartTime = animationDuration - fadeOutDuration;
-      
-      // Start fade-out before animation completes
+
       fadeOutTimeoutRef.current = setTimeout(() => {
-        setAnimationOpacity(0); // Fade out
+        setAnimationOpacity(0);
       }, fadeOutStartTime);
-      
-      // Restart animation after fade-out completes
+
       animationTimeoutRef.current = setTimeout(() => {
-        setHovered(false); // Hide animation
-        setAnimationKey(prev => prev + 1); // Increment key to force restart
-        setAnimationOpacity(1); // Reset opacity for next cycle
-        // Small delay before restarting to ensure clean transition
-        setTimeout(() => {
-          triggerBackgroundAnimation(); // Restart the animation
-        }, 100);
+        setHovered(false);
+        setAnimationOpacity(1);
       }, animationDuration);
     });
   }, [animationSettings.animationSpeed]);
@@ -348,14 +391,8 @@ export function Chatbot() {
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form submitted, messageInput:', messageInput);
-    
+
     if (!messageInput.trim() || isSending || messagesLoading) {
-      console.log('Submission blocked:', { 
-        hasMessage: !!messageInput.trim(), 
-        isSending, 
-        messagesLoading 
-      });
       return;
     }
 
@@ -364,13 +401,10 @@ export function Chatbot() {
     setIsSending(true);
 
     try {
-      console.log('Creating/getting session...');
       let sessionId = currentSessionId;
       if (!sessionId) {
         // Create session if none exists
-        console.log('No session, creating new one...');
         const newSession = await createSession(undefined);
-        console.log('New session created:', newSession);
         if (newSession) {
           sessionId = newSession.id;
           setCurrentSessionId(sessionId);
@@ -380,15 +414,12 @@ export function Chatbot() {
       }
       
       if (sessionId) {
-        console.log('Sending message to session:', sessionId);
         const intent = detectIncidentIntent(messageToSend);
         if (intent.match) {
           setPendingIntents((prev) => [...prev, messageToSend]);
         }
 
         await sendMessage(messageToSend, sessionId, toChatLocationPayload(detectedLocation));
-        console.log('Message sent successfully');
-        triggerBackgroundAnimation();
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -437,23 +468,27 @@ export function Chatbot() {
   // Mouse/touch tracking
 
   React.useEffect(() => {
+    let rafId: number | null = null;
+    let pending: { x: number; y: number } | null = null;
+
+    const flush = () => {
+      rafId = null;
+      if (pending) setMousePosition(pending);
+    };
+
+    // Coalesce pointer moves to at most one React state update per frame, and
+    // skip entirely when the shader is not on screen (e.g. iOS). Without this,
+    // every touchmove during a scroll re-rendered the whole chat tree.
+    const schedule = (x: number, y: number) => {
+      if (!shaderActiveRef.current) return;
+      pending = { x, y };
+      if (rafId === null) rafId = requestAnimationFrame(flush);
+    };
 
     const handleMouseMove = (e: MouseEvent) => {
-
-      if (containerRef.current) {
-
-        const rect = containerRef.current.getBoundingClientRect();
-
-        setMousePosition({
-
-          x: e.clientX - rect.left,
-
-          y: e.clientY - rect.top,
-
-        });
-
-      }
-
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      schedule(e.clientX - rect.left, e.clientY - rect.top);
     };
 
     const handleTouchMove = (e: TouchEvent) => {
@@ -473,48 +508,37 @@ export function Chatbot() {
 
       if (containerRef.current && e.touches.length > 0) {
         const rect = containerRef.current.getBoundingClientRect();
-        setMousePosition({
-          x: e.touches[0].clientX - rect.left,
-          y: e.touches[0].clientY - rect.top,
-        });
+        schedule(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top);
       }
     };
 
     const handleMouseLeave = () => {
-
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      pending = null;
       setMousePosition(null);
-
     };
 
     const container = containerRef.current;
 
     if (container) {
-
       container.addEventListener("mousemove", handleMouseMove);
-
       // Only track touchmove for animation - using passive to not interfere with clicks
       container.addEventListener("touchmove", handleTouchMove, { passive: true });
-
       container.addEventListener("mouseleave", handleMouseLeave);
-
       container.addEventListener("touchend", handleMouseLeave);
-
     }
 
     return () => {
-
+      if (rafId !== null) cancelAnimationFrame(rafId);
       if (container) {
-
         container.removeEventListener("mousemove", handleMouseMove);
-
         container.removeEventListener("touchmove", handleTouchMove);
-
         container.removeEventListener("mouseleave", handleMouseLeave);
-
         container.removeEventListener("touchend", handleMouseLeave);
-
       }
-
     };
 
   }, []);
@@ -642,11 +666,11 @@ export function Chatbot() {
 
           <AnimatePresence>
 
-            {hovered && !prefersReducedMotion && (
+            {hovered && !shaderDisabled && (
 
               <motion.div
 
-                key={`animation-${animationKey}`}
+                key="animation-canvas"
 
                 initial={{ opacity: 0 }}
 
@@ -688,7 +712,7 @@ export function Chatbot() {
 
             )}
 
-            {hovered && prefersReducedMotion && (
+            {hovered && shaderDisabled && (
               <div className="pointer-events-none absolute inset-0 h-full w-full bg-gradient-to-br from-sky-400/10 via-cyan-400/5 to-blue-500/10" />
             )}
 
@@ -789,20 +813,13 @@ export function Chatbot() {
                     {messages.length > 0 ? (
                       <MessageList
                         messages={messages}
-                        isLoading={isSending || isAwaitingReply}
+                        isLoading={isSending}
                         selectedColors={selectedColors}
                         sessionId={currentSessionId}
-                        onOpenHotlines={() => setIsHotlinesModalOpen(true)}
-                        onOpenReportInbox={() => setIsReportInboxOpen(true)}
-                        onOpenForecast={() => setIsForecastPanelOpen(true)}
-                        onStatusUpdate={(reportId) => {
-                          if (!reportId) return;
-                          setMessageInput((prev) =>
-                            prev
-                              ? prev
-                              : `Status update for report ${reportId.slice(0, 8)}: `,
-                          );
-                        }}
+                        onOpenHotlines={handleOpenHotlines}
+                        onOpenReportInbox={handleOpenReportInbox}
+                        onOpenForecast={handleOpenForecast}
+                        onStatusUpdate={handleStatusUpdate}
                       />
                     ) : null}
                     <div ref={messagesEndRef} />

@@ -8,6 +8,28 @@ import { AUTH_DISABLED } from '@/lib/config'
 import { getAnonymousSessionId } from '@/lib/utils/anonymous-session'
 import type { ChatLocationPayload } from '@/lib/chat/location-payload'
 
+// The server already trims the LLM context to the most recent turns, so there is
+// no reason to ship the entire transcript on every send. Capping the request
+// body keeps payloads (and serialization cost) bounded as a conversation grows.
+const MAX_CONTEXT_MESSAGES = 20
+
+function makeOptimisticMessage(
+  sessionId: string,
+  role: Message['role'],
+  content: string,
+): Message {
+  const now = new Date().toISOString()
+  return {
+    id: `optimistic-${role}-${now}-${Math.random().toString(36).slice(2)}`,
+    session_id: sessionId,
+    role,
+    content,
+    created_at: now,
+    updated_at: now,
+    metadata: {},
+  }
+}
+
 export function useChat(sessionId: string | null) {
   const supabase = createClient()
   const queryClient = useQueryClient()
@@ -65,18 +87,15 @@ export function useChat(sessionId: string | null) {
       sessionId: string
       location?: ChatLocationPayload
     }) => {
-      console.log('useChat: Starting sendMessage mutation', { content, sessionId: sid });
-      
       // Get anonymous session ID if needed
       const anonymousId = getAnonymousSessionId()
-      
+
       if (!AUTH_DISABLED) {
         const { data: { user } } = await supabase.auth.getUser()
-        
+
         if (user) {
           // Authenticated: insert user message directly
-          console.log('useChat: Inserting user message...');
-          const { data: userMessage, error: userError } = await supabase
+          const { error: userError } = await supabase
             .from('messages')
             .insert({
               session_id: sid,
@@ -86,22 +105,11 @@ export function useChat(sessionId: string | null) {
             .select()
             .single()
 
-          if (userError) {
-            console.error('useChat: Error inserting user message:', userError);
-            throw userError
-          }
-          
-          console.log('useChat: User message inserted:', userMessage);
-        } else {
-          // Not authenticated: API route will handle message insertion
-          console.log('useChat: Not authenticated - API route will handle message insertion');
+          if (userError) throw userError
         }
-      } else {
-        console.log('useChat: AUTH_DISABLED - API route will handle message insertion');
       }
 
-      // Call API to get AI response
-      console.log('useChat: Calling /api/chat endpoint...');
+      // Call API to get AI response. Only the most recent turns are sent.
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -112,30 +120,27 @@ export function useChat(sessionId: string | null) {
           anonymousId: anonymousId || undefined, // Only send if exists
           location,
           messages: [
-            ...messages.map(m => ({ role: m.role, content: m.content })),
+            ...messages
+              .slice(-MAX_CONTEXT_MESSAGES)
+              .map(m => ({ role: m.role, content: m.content })),
             { role: 'user', content },
           ],
         }),
       })
 
-      console.log('useChat: API response status:', response.status);
-
       if (!response.ok) {
         const error = await response.json()
-        console.error('useChat: API error:', error);
         throw new Error(error.error || error.message || 'Failed to get AI response')
       }
 
       const { message: aiMessage } = await response.json()
-      console.log('useChat: AI response received:', aiMessage);
 
       // Insert AI response only if authenticated (API route handles it for anonymous)
       if (!AUTH_DISABLED) {
         const { data: { user } } = await supabase.auth.getUser()
-        
+
         if (user) {
-          console.log('useChat: Inserting AI response...');
-          const { data: assistantMessage, error: assistantError } = await supabase
+          const { error: assistantError } = await supabase
             .from('messages')
             .insert({
               session_id: sid,
@@ -145,22 +150,40 @@ export function useChat(sessionId: string | null) {
             .select()
             .single()
 
-          if (assistantError) {
-            console.error('useChat: Error inserting assistant message:', assistantError);
-            throw assistantError
-          }
-          
-          console.log('useChat: Assistant message inserted:', assistantMessage);
-          return { userMessage: null, assistantMessage }
+          if (assistantError) throw assistantError
         }
       }
 
-      // When anonymous or AUTH_DISABLED, API route handles message insertion
-      return { userMessage: null, assistantMessage: null }
+      return { aiMessage: typeof aiMessage === 'string' ? aiMessage : '' }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
+    // Optimistically render the user's message immediately so the input feels
+    // instant and we don't depend on a refetch to show what they just typed.
+    onMutate: async ({ content, sessionId: sid }) => {
+      await queryClient.cancelQueries({ queryKey: ['messages', sid] })
+      const previous = queryClient.getQueryData<Message[]>(['messages', sid])
+      const optimisticUser = makeOptimisticMessage(sid, 'user', content)
+      queryClient.setQueryData<Message[]>(['messages', sid], (old = []) => [
+        ...old,
+        optimisticUser,
+      ])
+      return { previous, sid }
+    },
+    // Append the assistant reply from the response right away, then reconcile
+    // canonical rows (real ids) in the background without blocking the UI.
+    onSuccess: (data, variables) => {
+      if (data.aiMessage) {
+        queryClient.setQueryData<Message[]>(['messages', variables.sessionId], (old = []) => [
+          ...old,
+          makeOptimisticMessage(variables.sessionId, 'assistant', data.aiMessage),
+        ])
+      }
+      queryClient.invalidateQueries({ queryKey: ['messages', variables.sessionId] })
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['messages', context.sid], context.previous)
+      }
     },
   })
 

@@ -58,6 +58,30 @@ export const CanvasRevealEffect = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Play the reveal/color animation for a bounded window, then freeze the last
+  // rendered frame so the WebGL frame loop stops. On iOS Safari a continuously
+  // running shader is a major battery/jank source, and pausing while the tab is
+  // hidden avoids wasted GPU work.
+  const [active, setActive] = useState(true);
+
+  useEffect(() => {
+    const frozen = { current: false };
+    const apply = () => setActive(!document.hidden && !frozen.current);
+
+    apply();
+    const revealMs = (1.5 / Math.max(animationSpeed, 0.1)) * 1000 + 2500;
+    const freezeTimer = window.setTimeout(() => {
+      frozen.current = true;
+      apply();
+    }, revealMs);
+
+    document.addEventListener("visibilitychange", apply);
+    return () => {
+      window.clearTimeout(freezeTimer);
+      document.removeEventListener("visibilitychange", apply);
+    };
+  }, [animationSpeed]);
+
   return (
 
     <div 
@@ -90,6 +114,8 @@ export const CanvasRevealEffect = ({
           contrast={contrast}
 
           glow={glow}
+
+          active={active}
 
           shader={`
 
@@ -141,6 +167,8 @@ interface DotMatrixProps {
 
   glow?: number;
 
+  active?: boolean;
+
 }
 
 const DotMatrix: React.FC<DotMatrixProps> = ({
@@ -168,6 +196,8 @@ const DotMatrix: React.FC<DotMatrixProps> = ({
   contrast = 1.0,
 
   glow = 0.0,
+
+  active = true,
 
 }) => {
 
@@ -517,7 +547,9 @@ const DotMatrix: React.FC<DotMatrixProps> = ({
 
       mousePosition={mousePosition}
 
-      maxFps={60}
+      maxFps={30}
+
+      active={active}
 
     />
 
@@ -563,7 +595,7 @@ const ShaderMaterial = ({
 
 }) => {
 
-  const { size } = useThree();
+  const { size, viewport } = useThree();
 
   const ref = useRef<THREE.Mesh>();
 
@@ -679,9 +711,12 @@ const ShaderMaterial = ({
 
     preparedUniforms.u_time = { value: 0, type: "1f" };
 
+    // Derive resolution from the (capped) device pixel ratio instead of a
+    // hard-coded 2x, so high-DPR iPhones do not over-render.
+    const dpr = viewport?.dpr ?? 1;
     preparedUniforms.u_resolution = {
 
-      value: new THREE.Vector2(size.width * 2, size.height * 2),
+      value: new THREE.Vector2(size.width * dpr, size.height * dpr),
 
     };
 
@@ -757,11 +792,16 @@ const ShaderMaterial = ({
 
 };
 
-const Shader: React.FC<ShaderProps> = ({ source, uniforms, maxFps = 60, mousePosition }) => {
+const Shader: React.FC<ShaderProps> = ({ source, uniforms, maxFps = 60, mousePosition, active = true }) => {
 
   return (
 
-    <Canvas className="absolute inset-0  h-full w-full">
+    <Canvas
+      className="absolute inset-0  h-full w-full"
+      frameloop={active ? "always" : "never"}
+      dpr={[1, 2]}
+      gl={{ antialias: false, powerPreference: "low-power" }}
+    >
 
       <ShaderMaterial source={source} uniforms={uniforms} maxFps={maxFps} mousePosition={mousePosition} />
 
@@ -792,5 +832,7 @@ interface ShaderProps {
   maxFps?: number;
 
   mousePosition?: { x: number; y: number } | null;
+
+  active?: boolean;
 
 }
