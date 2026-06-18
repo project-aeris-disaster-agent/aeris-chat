@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Inbox, LogOut, RefreshCw, ShieldCheck, Trash2, Trophy, X } from "lucide-react";
+import Image from "next/image";
+import { LogOut, RefreshCw, ShieldCheck, Trash2, Trophy, X } from "lucide-react";
+import bagyoLogo from "@/assets/Bagyo Logo@5x.png";
 import { Button } from "@/components/ui/button";
 import { getAnonymousSessionId } from "@/lib/utils/anonymous-session";
 import { useUserProfile } from "@/contexts/ProfileContext";
@@ -159,12 +161,16 @@ export function ReportInboxModal({ isOpen, onClose, refreshKey = 0 }: ReportInbo
           onClick={(event) => event.stopPropagation()}
         >
           <div className="flex items-center justify-between border-b border-border p-4 md:p-6">
-            <div className="flex items-center gap-3">
-              <div className="rounded-full bg-primary/10 p-2 text-primary">
-                <Inbox className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-foreground md:text-2xl">Profile &amp; Reports</h2>
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              <Image
+                src={bagyoLogo}
+                alt="bagyo.app"
+                width={600}
+                height={180}
+                className="h-8 w-auto shrink-0 object-contain md:h-9"
+              />
+              <div className="min-w-0">
+                <h2 className="text-xl font-bold leading-tight text-foreground md:text-2xl">Profile &amp; Reports</h2>
                 <p className="text-sm text-muted-foreground">
                   Your AERIS profile, XP, and reports sent from this browser.
                 </p>
