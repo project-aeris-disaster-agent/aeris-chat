@@ -32,14 +32,14 @@ export function ChatHeader({ session, onNewSession }: ChatHeaderProps) {
               {user.email?.charAt(0).toUpperCase()}
             </div>
             <span className="text-sm text-text-primary">{user.email}</span>
+            <button
+              onClick={signOut}
+              className="px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
+            >
+              Sign Out
+            </button>
           </div>
         )}
-        <button
-          onClick={signOut}
-          className="px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
-        >
-          Sign Out
-        </button>
       </div>
     </div>
   )

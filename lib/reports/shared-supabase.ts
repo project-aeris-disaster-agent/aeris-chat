@@ -118,6 +118,8 @@ export async function createSharedSupabaseReport(input: {
   photoUrl?: string;
   metadata?: Record<string, unknown>;
   ipHash?: string;
+  /** Privy DID of the signed-in reporter; null for anonymous reports. */
+  reporterUserId?: string | null;
 }): Promise<SharedReport> {
   const cfg = supabaseConfig();
   if (!cfg) throw new Error("Shared Supabase is not configured.");
@@ -144,6 +146,10 @@ export async function createSharedSupabaseReport(input: {
     moderation_status: "visible",
     confirmations: 0,
     ip_hash: input.ipHash ?? null,
+    // Privy DID of the signed-in reporter. Lets the dashboard award
+    // `report_verified` XP back to this user on operator verify. TEXT column —
+    // never use the legacy UUID `user_id` column for the DID.
+    reporter_user_id: input.reporterUserId ?? null,
     phone_verification_status: "unverified",
     onchain_network: "base-mainnet",
     onchain_chain_id: 8453,

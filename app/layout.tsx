@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { Providers } from '@/components/providers'
+import { PrivyProviders } from '@/components/providers/PrivyProviders'
 import { AuthProvider } from '@/contexts/AuthContext'
+import { ProfileProvider } from '@/contexts/ProfileContext'
 import { InstallAppPrompt } from '@/components/InstallAppPrompt'
 import { PwaRegistrar } from '@/components/PwaRegistrar'
 
@@ -59,11 +61,15 @@ export default function RootLayout({
       </head>
       <body className="h-app overflow-hidden">
         <Providers>
-          <AuthProvider>
-            <PwaRegistrar />
-            {children}
-            <InstallAppPrompt />
-          </AuthProvider>
+          <PrivyProviders>
+            <AuthProvider>
+              <ProfileProvider>
+                <PwaRegistrar />
+                {children}
+                <InstallAppPrompt />
+              </ProfileProvider>
+            </AuthProvider>
+          </PrivyProviders>
         </Providers>
       </body>
     </html>

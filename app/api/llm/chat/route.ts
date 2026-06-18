@@ -48,6 +48,12 @@ import {
 
 } from "@/lib/nvidia-llm";
 
+import { checkChatRateLimit, rateLimitHeaders } from "@/lib/guardrails/rate-limit";
+
+import { maxMessageChars } from "@/lib/guardrails/validate";
+
+import { moderateInput, moderateOutput, outputFallbackMessage } from "@/lib/guardrails/moderation";
+
 
 
 export async function GET() {
@@ -134,6 +140,62 @@ export async function POST(request: NextRequest) {
 
 
 
+  // Bound per-message size to cap token cost / latency on the shared proxy.
+
+  const charCap = maxMessageChars();
+
+  if (messages.some((m) => m.content.length > charCap)) {
+
+    return NextResponse.json(
+
+      { error: `Message too long. Maximum ${charCap} characters per message.` },
+
+      { status: 413 },
+
+    );
+
+  }
+
+
+
+  // Per-identity rate limit (Authorization bearer / client IP).
+
+  const rateLimit = await checkChatRateLimit(request);
+
+  if (!rateLimit.success) {
+
+    return NextResponse.json(
+
+      { error: "Too many requests. Please slow down and try again shortly." },
+
+      { status: 429, headers: rateLimitHeaders(rateLimit) },
+
+    );
+
+  }
+
+
+
+  // Moderate the latest user input before calling the model.
+
+  const latestUserMessage = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+
+  const inputVerdict = await moderateInput(latestUserMessage);
+
+  if (!inputVerdict.allowed) {
+
+    return NextResponse.json(
+
+      { error: inputVerdict.reason ?? "This request can't be processed." },
+
+      { status: 422, headers: { "cache-control": "no-store" } },
+
+    );
+
+  }
+
+
+
   const config = getNvidiaConfig();
 
   const timeoutMs = getDefaultLlmTimeoutMs();
@@ -146,13 +208,17 @@ export async function POST(request: NextRequest) {
 
   try {
 
-    const content = await callNvidiaChatCompletion(messages, {
+    const rawContent = await callNvidiaChatCompletion(messages, {
 
       signal: controller.signal,
 
     });
 
     clearTimeout(timeoutId);
+
+    const outputVerdict = await moderateOutput(rawContent);
+
+    const content = outputVerdict.allowed ? rawContent : outputFallbackMessage();
 
     return NextResponse.json(
 

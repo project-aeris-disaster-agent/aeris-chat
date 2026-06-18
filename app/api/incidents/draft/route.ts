@@ -16,6 +16,9 @@ import {
   insertDraft,
   type IncidentDraftRow,
 } from "@/lib/incidents/draft-store";
+import { checkChatRateLimit, rateLimitHeaders } from "@/lib/guardrails/rate-limit";
+import { validateSingleMessage } from "@/lib/guardrails/validate";
+import { moderateInput } from "@/lib/guardrails/moderation";
 
 type DraftResponse = {
   matched: boolean;
@@ -42,18 +45,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const message = typeof body.message === "string" ? body.message.trim() : "";
   const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
   const userMessageId =
     typeof body.userMessageId === "string" ? body.userMessageId : "";
   const anonymousId =
     typeof body.anonymousId === "string" ? body.anonymousId : "";
 
-  if (!message) {
-    return NextResponse.json({ error: "message is required" }, { status: 400 });
+  const validation = validateSingleMessage(body.message);
+  if (!validation.ok) {
+    return NextResponse.json({ error: validation.error }, { status: validation.status });
   }
-  if (message.length > 4000) {
-    return NextResponse.json({ error: "message too long" }, { status: 413 });
+  const message = validation.message;
+
+  const rateLimit = await checkChatRateLimit(request, { anonymousId: anonymousId || null });
+  if (!rateLimit.success) {
+    return NextResponse.json(
+      { error: "Too many requests. Please slow down and try again shortly." },
+      { status: 429, headers: rateLimitHeaders(rateLimit) },
+    );
+  }
+
+  const inputVerdict = await moderateInput(message);
+  if (!inputVerdict.allowed) {
+    return NextResponse.json(
+      { error: inputVerdict.reason ?? "This request can't be processed." },
+      { status: 422 },
+    );
   }
 
   const intent = detectIncidentIntent(message);

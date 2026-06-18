@@ -23,6 +23,15 @@ import {
   formatWeatherLiveContextBlock,
 } from '@/lib/weather/build-context'
 import { runWeatherTool, WEATHER_AGENT_TOOLS } from '@/lib/weather/agent-tools'
+import { checkChatRateLimit, rateLimitHeaders } from '@/lib/guardrails/rate-limit'
+import { validateChatMessages } from '@/lib/guardrails/validate'
+import { scanForInjection, INJECTION_REINFORCEMENT } from '@/lib/guardrails/injection'
+import {
+  moderateInput,
+  moderateOutput,
+  inputRefusalMessage,
+  outputFallbackMessage,
+} from '@/lib/guardrails/moderation'
 
 export async function POST(request: NextRequest) {
   try {
@@ -106,6 +115,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const rateLimit = await checkChatRateLimit(request, {
+      userId: user?.id ?? null,
+      anonymousId: anonymousId ?? null,
+    })
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please slow down and try again shortly.' },
+        { status: 429, headers: rateLimitHeaders(rateLimit) },
+      )
+    }
+
     const persistUserAndAssistant = async (aiMessage: string) => {
       const userMessageContent = messages[messages.length - 1]?.content
       if (userMessageContent) {
@@ -146,18 +166,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const sanitizedMessages: NvidiaChatMessage[] = messages
-      .filter(
-        (m): m is { role: string; content: string } =>
-          typeof m?.role === 'string' && typeof m?.content === 'string',
-      )
-      .filter((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'system')
-      .map((m) => ({
-        role: m.role as 'user' | 'assistant' | 'system',
-        content: m.content.trim(),
-      }))
-      .filter((m) => m.content.length > 0)
-      .slice(-20)
+    const validation = validateChatMessages(messages)
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.error }, { status: validation.status })
+    }
+
+    // SECURITY: never honor client-supplied `system` messages. They are a
+    // prompt-injection vector that could replace the AERIS safety persona. We
+    // keep only user/assistant turns; the server injects the system prompt.
+    const sanitizedMessages: NvidiaChatMessage[] = validation.messages.filter(
+      (m) => m.role !== 'system',
+    )
 
     if (sanitizedMessages.length === 0) {
       return NextResponse.json(
@@ -168,6 +187,30 @@ export async function POST(request: NextRequest) {
 
     const latestUserMessage =
       [...sanitizedMessages].reverse().find((m) => m.role === 'user')?.content ?? ''
+
+    // Content moderation on the latest user input, before any model call.
+    const inputVerdict = await moderateInput(latestUserMessage)
+    if (!inputVerdict.allowed) {
+      const refusal = inputRefusalMessage()
+      console.warn(
+        `[guardrails] input blocked (${inputVerdict.category}) for session ${sessionId}`,
+      )
+      await persistUserAndAssistant(refusal)
+      return NextResponse.json({
+        message: refusal,
+        provider: 'nvidia',
+        model: nvidiaConfig.model,
+      })
+    }
+
+    const injection = scanForInjection(latestUserMessage)
+    if (injection.detected) {
+      console.warn(
+        `[guardrails] possible prompt injection in session ${sessionId}:`,
+        injection.matched,
+      )
+    }
+
     const weatherIntent = detectWeatherIntent(latestUserMessage)
 
     const clientIp = getClientIP(request) ?? 'unknown'
@@ -175,7 +218,6 @@ export async function POST(request: NextRequest) {
     const resolvedLocation = await resolveChatLocation(clientLocation, clientIp)
 
     const systemPrompt = process.env.LLM_SYSTEM_PROMPT?.trim() || getCitizenSystemPrompt()
-    const hasSystem = sanitizedMessages.some((m) => m.role === 'system')
 
     const contextBlocks: string[] = []
     if (resolvedLocation) {
@@ -199,18 +241,18 @@ export async function POST(request: NextRequest) {
     }
 
     const systemMessages: NvidiaChatMessage[] = []
-    if (systemPrompt && !hasSystem) {
+    if (systemPrompt) {
       systemMessages.push({ role: 'system', content: systemPrompt })
+    }
+    // Re-assert guardrails when an injection attempt was detected.
+    if (injection.detected) {
+      systemMessages.push({ role: 'system', content: INJECTION_REINFORCEMENT })
     }
     for (const block of contextBlocks) {
       systemMessages.push({ role: 'system', content: block })
     }
 
-    const conversationMessages = hasSystem
-      ? sanitizedMessages
-      : sanitizedMessages.filter((m) => m.role !== 'system')
-
-    const finalMessages: AgentMessage[] = [...systemMessages, ...conversationMessages]
+    const finalMessages: AgentMessage[] = [...systemMessages, ...sanitizedMessages]
 
     const controller = new AbortController()
     const timeoutMs = Number(process.env.LLM_TIMEOUT_MS ?? '45000')
@@ -245,6 +287,15 @@ export async function POST(request: NextRequest) {
       }
 
       clearTimeout(timeoutId)
+
+      // Moderate model output before returning it to the user.
+      const outputVerdict = await moderateOutput(aiMessage)
+      if (!outputVerdict.allowed) {
+        console.warn(
+          `[guardrails] output blocked (${outputVerdict.category}) for session ${sessionId}`,
+        )
+        aiMessage = outputFallbackMessage()
+      }
 
       await persistUserAndAssistant(aiMessage)
       return NextResponse.json({
