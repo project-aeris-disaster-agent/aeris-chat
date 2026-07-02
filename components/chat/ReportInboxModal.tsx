@@ -1,9 +1,13 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
-import { Inbox, RefreshCw, Trash2, X } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import { LogOut, RefreshCw, ShieldCheck, Trash2, Trophy, X } from "lucide-react";
+import bagyoLogo from "@/assets/Bagyo Logo@5x.png";
 import { Button } from "@/components/ui/button";
 import { getAnonymousSessionId } from "@/lib/utils/anonymous-session";
+import { useUserProfile } from "@/contexts/ProfileContext";
+import { levelProgress } from "@/lib/gamification";
 import { cn } from "@/lib/utils";
 
 type ReportInboxModalProps = {
@@ -60,6 +64,31 @@ export function ReportInboxModal({ isOpen, onClose, refreshKey = 0 }: ReportInbo
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [status, setStatus] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
+
+  const {
+    profile,
+    loading: profileLoading,
+    ready: privyReady,
+    authenticated,
+    privyEnabled,
+    login,
+    logout,
+  } = useUserProfile();
+
+  // Prompt Privy login the first time the inbox is opened by an anonymous user.
+  // Reports stay viewable either way, but signing in unlocks profile + XP and
+  // lets verified reports earn rewards back to this account.
+  const promptedRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      promptedRef.current = false;
+      return;
+    }
+    if (privyEnabled && privyReady && !authenticated && !promptedRef.current) {
+      promptedRef.current = true;
+      login();
+    }
+  }, [isOpen, privyEnabled, privyReady, authenticated, login]);
 
   const loadReports = useCallback(async () => {
     setLoading(true);
@@ -132,14 +161,18 @@ export function ReportInboxModal({ isOpen, onClose, refreshKey = 0 }: ReportInbo
           onClick={(event) => event.stopPropagation()}
         >
           <div className="flex items-center justify-between border-b border-border p-4 md:p-6">
-            <div className="flex items-center gap-3">
-              <div className="rounded-full bg-primary/10 p-2 text-primary">
-                <Inbox className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-foreground md:text-2xl">Report Inbox</h2>
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              <Image
+                src={bagyoLogo}
+                alt="bagyo.app"
+                width={600}
+                height={180}
+                className="h-8 w-auto shrink-0 object-contain md:h-9"
+              />
+              <div className="min-w-0">
+                <h2 className="text-xl font-bold leading-tight text-foreground md:text-2xl">Profile &amp; Reports</h2>
                 <p className="text-sm text-muted-foreground">
-                  Review and delete reports sent from this browser.
+                  Your AERIS profile, XP, and reports sent from this browser.
                 </p>
               </div>
             </div>
@@ -147,6 +180,17 @@ export function ReportInboxModal({ isOpen, onClose, refreshKey = 0 }: ReportInbo
               <X className="h-5 w-5" />
             </Button>
           </div>
+
+          {privyEnabled ? (
+            <ProfilePanel
+              profile={profile}
+              loading={profileLoading}
+              ready={privyReady}
+              authenticated={authenticated}
+              onLogin={login}
+              onLogout={() => void logout()}
+            />
+          ) : null}
 
           <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-6">
             <p className="text-sm text-muted-foreground">
@@ -268,6 +312,121 @@ export function ReportInboxModal({ isOpen, onClose, refreshKey = 0 }: ReportInbo
         </div>
       </div>
     </>
+  );
+}
+
+type ProfilePanelProps = {
+  profile: ReturnType<typeof useUserProfile>["profile"];
+  loading: boolean;
+  ready: boolean;
+  authenticated: boolean;
+  onLogin: () => void;
+  onLogout: () => void;
+};
+
+function ProfilePanel({
+  profile,
+  loading,
+  ready,
+  authenticated,
+  onLogin,
+  onLogout,
+}: ProfilePanelProps) {
+  if (!ready) {
+    return (
+      <div className="border-b border-border px-4 py-4 md:px-6">
+        <div className="h-12 w-full animate-pulse rounded-lg bg-muted" aria-hidden />
+      </div>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <div className="border-b border-border bg-muted/30 px-4 py-4 md:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-full bg-primary/10 p-2 text-primary">
+              <Trophy className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">Sign in to track your profile &amp; XP</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Earn XP for reports you submit and keep your level synced across AERIS.
+              </p>
+            </div>
+          </div>
+          <Button type="button" onClick={onLogin} className="shrink-0">
+            <ShieldCheck className="mr-2 h-4 w-4" />
+            Sign in with Privy
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading && !profile) {
+    return (
+      <div className="border-b border-border px-4 py-4 md:px-6">
+        <div className="h-12 w-full animate-pulse rounded-lg bg-muted" aria-hidden />
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="flex items-center justify-between border-b border-border px-4 py-4 md:px-6">
+        <p className="text-sm text-muted-foreground">Profile unavailable right now.</p>
+        <Button type="button" variant="ghost" size="sm" onClick={onLogout}>
+          <LogOut className="mr-2 h-4 w-4" />
+          Sign out
+        </Button>
+      </div>
+    );
+  }
+
+  const progress = levelProgress(profile.xp);
+  const pct = progress.isMax ? 100 : Math.round(progress.ratio * 100);
+
+  return (
+    <div className="border-b border-border bg-muted/20 px-4 py-4 md:px-6">
+      <div className="flex items-center gap-4">
+        <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-white shadow-sm">
+          <span className="text-[10px] font-medium uppercase leading-none opacity-80">Lvl</span>
+          <span className="text-xl font-bold leading-none">{profile.level}</span>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className="truncate text-base font-bold text-foreground">{profile.username}</p>
+            <Button type="button" variant="ghost" size="sm" onClick={onLogout} className="shrink-0">
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign out
+            </Button>
+          </div>
+
+          <div className="mt-2 flex items-center gap-2">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-border">
+              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="shrink-0 text-xs font-medium text-muted-foreground">
+              {progress.isMax
+                ? `${profile.xp.toLocaleString()} XP · MAX`
+                : `${progress.xpIntoLevel}/${progress.xpForNextLevel} XP`}
+            </span>
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>Total XP: {profile.xp.toLocaleString()}</span>
+            {profile.email ? <span className="truncate">{profile.email}</span> : null}
+            {profile.proxyWalletAddress ? (
+              <span className="font-mono">
+                {profile.proxyWalletAddress.slice(0, 6)}…{profile.proxyWalletAddress.slice(-4)}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

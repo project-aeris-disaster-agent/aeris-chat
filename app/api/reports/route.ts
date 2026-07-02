@@ -15,6 +15,9 @@ import {
   rateLimitRetryAfterSeconds,
 } from "@/lib/security/rate-limit";
 import { resolveAnonId } from "@/lib/security/anon-identity";
+import { resolveSessionUserIdFromRequest } from "@/lib/session-user";
+import { ensureUserProfile, userProfilesEnabled } from "@/lib/user-profiles";
+import { awardXp } from "@/lib/gamification";
 
 function isPosition(value: unknown): value is [number, number] {
   return (
@@ -136,6 +139,11 @@ export async function POST(request: NextRequest) {
     const ipHash = await hashIp(getClientIp(request));
     const photoUrl = sanitizePhotoUrl(body.photoUrl);
 
+    // Resolve the signed-in reporter's Privy DID (null for anonymous users).
+    // Tagging the report with it lets the dashboard award `report_verified` XP
+    // back to this user on operator verify.
+    const reporterUserId = await resolveSessionUserIdFromRequest(request);
+
     if (sharedSupabaseReportsEnabled()) {
       try {
         const report = await createSharedSupabaseReport({
@@ -157,10 +165,26 @@ export async function POST(request: NextRequest) {
           },
           ipHash,
           moderationStatus,
+          reporterUserId,
         });
 
         if (triageNotifyEnabled() && report?.id) {
           void notifyTriageForReport(report.id);
+        }
+
+        // Award submit_report XP to signed-in reporters. Sync the profile first
+        // because award_xp no-ops when the profile row is missing. Idempotent
+        // via the stable dedupe key, so this never double-rewards.
+        if (reporterUserId && userProfilesEnabled() && report?.id) {
+          try {
+            await ensureUserProfile({ userId: reporterUserId });
+            await awardXp(reporterUserId, "submit_report", {
+              refId: report.id,
+              dedupeKey: `submit_report:${report.id}`,
+            });
+          } catch (xpError) {
+            console.error("submit_report XP award failed:", xpError);
+          }
         }
 
         return NextResponse.json({ report }, { status: 201 });

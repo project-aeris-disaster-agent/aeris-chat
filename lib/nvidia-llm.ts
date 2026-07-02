@@ -335,9 +335,16 @@ export function normalizeChatMessages(raw: unknown): ChatMessage[] {
 export function authorizeLlmProxy(request: Request): boolean {
   const expected = process.env.LLM_API_KEY?.trim();
   if (!expected) {
-    // Fail closed: an unset key must not leave the proxy open in production.
-    // Allow only when explicitly opted in for local development.
-    return process.env.LLM_PROXY_OPEN === "true";
+    // Fail OPEN only outside production (local dev convenience). In production
+    // an unset key would leave an open, unauthenticated LLM proxy, so we fail
+    // CLOSED and require the operator to configure LLM_API_KEY.
+    if (process.env.NODE_ENV === "production") {
+      console.error(
+        "[guardrails] LLM_API_KEY is not set in production — rejecting /api/llm/chat request.",
+      );
+      return false;
+    }
+    return true;
   }
   const auth = request.headers.get("authorization") ?? "";
   return auth === `Bearer ${expected}`;
