@@ -231,13 +231,15 @@ export function Chatbot() {
         sessionId: currentSessionId,
         userMessageId: match.id,
         anonymousId,
-      }).then((result) => {
-        if (!result?.matched || !result.draft) return;
-        const draft = result.draft as DraftIncidentReport;
-        // Launch the guided pop-up flow (detect -> photo -> report form).
-        setDetectedDraft(draft);
-        setIsDetectionPopupOpen(true);
-      });
+      })
+        .then((result) => {
+          if (!result?.matched || !result.draft) return;
+          const draft = result.draft as DraftIncidentReport;
+          // Launch the guided pop-up flow (detect -> photo -> report form).
+          setDetectedDraft(draft);
+          setIsDetectionPopupOpen(true);
+        })
+        .catch(() => undefined);
     }
     if (remaining.length !== pendingIntents.length) {
       setPendingIntents(remaining);

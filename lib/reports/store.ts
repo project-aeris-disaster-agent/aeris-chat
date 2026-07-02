@@ -36,7 +36,7 @@ export type DisasterReport = {
     };
   };
   verificationOtp?: {
-    code: string;
+    codeHash: string;
     requestedAt: string;
     phoneNumber: string;
   };

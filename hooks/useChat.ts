@@ -54,15 +54,17 @@ export function useChat(sessionId: string | null) {
       const { data: { user } } = await supabase.auth.getUser()
       
       if (user) {
-        // Authenticated: use direct Supabase query
+        // Authenticated: use direct Supabase query. Cap to the most recent
+        // messages, then restore chronological order for display.
         const { data, error } = await supabase
           .from('messages')
           .select('*')
           .eq('session_id', sessionId)
-          .order('created_at', { ascending: true })
+          .order('created_at', { ascending: false })
+          .limit(200)
 
         if (error) throw error
-        return data as Message[]
+        return (data as Message[]).reverse()
       } else {
         // Not authenticated: use anonymous session
         const anonymousId = getAnonymousSessionId()

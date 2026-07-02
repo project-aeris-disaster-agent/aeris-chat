@@ -3,7 +3,7 @@
 import { memo, useMemo } from 'react'
 import { Message } from '@/types/user'
 import { formatTime } from '@/lib/utils/format'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { FollowUpActions, type FollowUpAction } from './FollowUpActions'
@@ -17,18 +17,18 @@ const REHYPE_PLUGINS = [rehypeHighlight]
 
 // Building the components map is cheap, but recreating it inline on every render
 // defeats ReactMarkdown's internal memoization, so we build it once per handler.
-function createMarkdownComponents(handlers: MessageEnrichHandlers) {
+function createMarkdownComponents(handlers: MessageEnrichHandlers): Components {
   return {
-    p: ({ children }: any) => <p>{enrichChildren(children, handlers, 'p')}</p>,
-    li: ({ children }: any) => <li>{enrichChildren(children, handlers, 'li')}</li>,
-    td: ({ children }: any) => <td>{enrichChildren(children, handlers, 'td')}</td>,
-    strong: ({ children }: any) => (
-      <strong>{enrichChildren(children, handlers, 'strong')}</strong>
-    ),
-    em: ({ children }: any) => <em>{enrichChildren(children, handlers, 'em')}</em>,
-    code: ({ node, inline, className, children, ...props }: any) => {
-      const match = /language-(\w+)/.exec(className || '')
-      return !inline && match ? (
+    p: ({ children }) => <p>{enrichChildren(children, handlers, 'p')}</p>,
+    li: ({ children }) => <li>{enrichChildren(children, handlers, 'li')}</li>,
+    td: ({ children }) => <td>{enrichChildren(children, handlers, 'td')}</td>,
+    strong: ({ children }) => <strong>{enrichChildren(children, handlers, 'strong')}</strong>,
+    em: ({ children }) => <em>{enrichChildren(children, handlers, 'em')}</em>,
+    // react-markdown v9 no longer passes an `inline` flag; a language-* class
+    // marks a fenced block, otherwise it renders as inline code.
+    code: ({ node: _node, className, children, ...props }) => {
+      const isBlock = /language-(\w+)/.test(className || '')
+      return isBlock ? (
         <pre className="bg-gray-900 rounded p-4 overflow-x-auto">
           <code className={className} {...props}>
             {children}

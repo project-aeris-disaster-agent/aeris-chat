@@ -1,3 +1,5 @@
+import type { StoredOtp } from "@/lib/security/otp";
+
 type SharedReport = {
   id: string;
   messageId?: string;
@@ -10,6 +12,8 @@ type SharedReport = {
   verificationStatus?: string;
   moderationStatus?: string;
   phoneVerificationStatus?: string;
+  /** True when this insert was coalesced into an existing near-duplicate. */
+  deduped?: boolean;
   onchain?: {
     phoneVerificationStatus?: string;
     mint?: { status: string; network: string; chainId: number; txHash?: string };
@@ -67,6 +71,58 @@ async function computeDedupeHash(input: {
     .join("");
 }
 
+/**
+ * Look for a report with the same dedupe hash filed within `withinMs`. If found,
+ * increment its `confirmations` and return the updated row. Returns null when no
+ * recent duplicate exists (or the DB has no dedupe_hash column yet).
+ */
+async function confirmRecentDuplicate(
+  cfg: { url: string; serviceKey: string },
+  dedupeHash: string,
+  withinMs: number,
+): Promise<SharedReport | null> {
+  const since = new Date(Date.now() - withinMs).toISOString();
+  const params = new URLSearchParams({
+    select: "*",
+    dedupe_hash: `eq.${dedupeHash}`,
+    created_at: `gte.${since}`,
+    order: "created_at.desc",
+    limit: "1",
+  });
+
+  let res: Response;
+  try {
+    res = await fetch(`${cfg.url}/rest/v1/disaster_reports?${params}`, {
+      headers: headers(cfg.serviceKey),
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+  // If dedupe_hash column is absent on older schemas, PostgREST 400s — treat as
+  // "no dedup available" and let the normal insert proceed.
+  if (!res.ok) return null;
+
+  const rows = (await res.json()) as Record<string, unknown>[];
+  const existing = rows[0];
+  if (!existing) return null;
+
+  const id = String(existing.id);
+  const nextConfirmations = Number(existing.confirmations ?? 0) + 1;
+
+  const patch = await fetch(
+    `${cfg.url}/rest/v1/disaster_reports?id=eq.${encodeURIComponent(id)}&select=*`,
+    {
+      method: "PATCH",
+      headers: { ...headers(cfg.serviceKey), prefer: "return=representation" },
+      body: JSON.stringify({ confirmations: nextConfirmations }),
+    },
+  );
+  if (!patch.ok) return toSharedReport(existing);
+  const patched = (await patch.json()) as Record<string, unknown>[];
+  return patched[0] ? toSharedReport(patched[0]) : toSharedReport(existing);
+}
+
 function toSharedReport(row: Record<string, unknown>): SharedReport {
   const metadata =
     row.metadata && typeof row.metadata === "object"
@@ -118,6 +174,8 @@ export async function createSharedSupabaseReport(input: {
   photoUrl?: string;
   metadata?: Record<string, unknown>;
   ipHash?: string;
+  /** "visible" (default) or "pending" when quality heuristics flag it. */
+  moderationStatus?: string;
 }): Promise<SharedReport> {
   const cfg = supabaseConfig();
   if (!cfg) throw new Error("Shared Supabase is not configured.");
@@ -130,6 +188,11 @@ export async function createSharedSupabaseReport(input: {
     position: input.position,
   });
 
+  // Anti-spam: coalesce a near-identical report filed within the dedup window
+  // into the existing one (bump confirmations) instead of creating a new row.
+  const duplicate = await confirmRecentDuplicate(cfg, dedupeHash, 30 * 60 * 1000);
+  if (duplicate) return { ...duplicate, deduped: true };
+
   const insertPayload: Record<string, unknown> = {
     report_message_id: reportMessageId,
     source_app: "aeris-chat",
@@ -141,7 +204,7 @@ export async function createSharedSupabaseReport(input: {
     location_accuracy_m: input.locationAccuracyM ?? null,
     confidence: 0.35,
     verification_status: "unverified",
-    moderation_status: "visible",
+    moderation_status: input.moderationStatus ?? "visible",
     confirmations: 0,
     ip_hash: input.ipHash ?? null,
     phone_verification_status: "unverified",
@@ -201,6 +264,11 @@ export async function listSharedSupabaseReportsByAnonymousId(
   const cfg = supabaseConfig();
   if (!cfg) return [];
 
+  // anonymousId is interpolated into a PostgREST `cs.{...}` JSON filter; only
+  // allow the UUID-ish charset our client generates so it cannot break out of
+  // the JSON literal or inject additional filter clauses.
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(anonymousId)) return [];
+
   const params = new URLSearchParams({
     select: "*",
     metadata: `cs.{"anonymousId":"${anonymousId}"}`,
@@ -218,7 +286,9 @@ export async function listSharedSupabaseReportsByAnonymousId(
   return rows.map(toSharedReport);
 }
 
-export async function getSharedSupabaseReportById(reportId: string): Promise<SharedReport | null> {
+async function fetchRawReportRow(
+  reportId: string,
+): Promise<Record<string, unknown> | null> {
   const cfg = supabaseConfig();
   if (!cfg) return null;
 
@@ -235,7 +305,54 @@ export async function getSharedSupabaseReportById(reportId: string): Promise<Sha
 
   if (!res.ok) return null;
   const rows = (await res.json()) as Record<string, unknown>[];
-  return rows[0] ? toSharedReport(rows[0]) : null;
+  return rows[0] ?? null;
+}
+
+function readMetadata(row: Record<string, unknown> | null): Record<string, unknown> {
+  return row?.metadata && typeof row.metadata === "object"
+    ? (row.metadata as Record<string, unknown>)
+    : {};
+}
+
+export async function getSharedSupabaseReportById(reportId: string): Promise<SharedReport | null> {
+  const row = await fetchRawReportRow(reportId);
+  return row ? toSharedReport(row) : null;
+}
+
+/** Read the stored OTP challenge (if any) for a shared report. */
+export async function getSharedReportOtp(reportId: string): Promise<StoredOtp | null> {
+  const row = await fetchRawReportRow(reportId);
+  const otp = readMetadata(row).otp;
+  return otp && typeof otp === "object" ? (otp as StoredOtp) : null;
+}
+
+/**
+ * Merge a partial metadata patch into a shared report without clobbering
+ * existing keys (anonymousId, sessionId, messageId, ...). Pass `otp: null` in
+ * the patch to clear a consumed challenge.
+ */
+export async function patchSharedReportMetadata(
+  reportId: string,
+  patch: Record<string, unknown>,
+): Promise<boolean> {
+  const cfg = supabaseConfig();
+  if (!cfg) return false;
+
+  const row = await fetchRawReportRow(reportId);
+  if (!row) return false;
+
+  const merged = { ...readMetadata(row), ...patch };
+  if (patch.otp === null) delete merged.otp;
+
+  const res = await fetch(
+    `${cfg.url}/rest/v1/disaster_reports?id=eq.${encodeURIComponent(reportId)}`,
+    {
+      method: "PATCH",
+      headers: headers(cfg.serviceKey),
+      body: JSON.stringify({ metadata: merged }),
+    },
+  );
+  return res.ok;
 }
 
 export async function patchSharedReportPhoneVerified(
@@ -245,11 +362,18 @@ export async function patchSharedReportPhoneVerified(
   const cfg = supabaseConfig();
   if (!cfg) return null;
 
-  const current = await getSharedSupabaseReportById(reportId);
-  if (!current) return null;
+  const row = await fetchRawReportRow(reportId);
+  if (!row) return null;
 
   const proxyWalletId = crypto.randomUUID();
   const proxyWalletAddress = `0x${crypto.randomUUID().replace(/-/g, "").padEnd(40, "0").slice(0, 40)}`;
+
+  // Merge into existing metadata so anonymousId / sessionId / messageId survive,
+  // and drop the now-consumed OTP challenge.
+  const mergedMetadata = { ...readMetadata(row) };
+  delete mergedMetadata.otp;
+  mergedMetadata.verifiedPhoneNumber = phoneNumber;
+  mergedMetadata.verifiedAt = new Date().toISOString();
 
   const res = await fetch(`${cfg.url}/rest/v1/disaster_reports?id=eq.${encodeURIComponent(reportId)}&select=*`, {
     method: "PATCH",
@@ -260,10 +384,7 @@ export async function patchSharedReportPhoneVerified(
       proxy_wallet_id: proxyWalletId,
       proxy_wallet_address: proxyWalletAddress,
       onchain_mint_status: "queued",
-      metadata: {
-        verifiedPhoneNumber: phoneNumber,
-        verifiedAt: new Date().toISOString(),
-      },
+      metadata: mergedMetadata,
     }),
   });
 

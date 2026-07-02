@@ -16,6 +16,12 @@ import {
   insertDraft,
   type IncidentDraftRow,
 } from "@/lib/incidents/draft-store";
+import {
+  checkRateLimit,
+  clientRateKey,
+  rateLimitRetryAfterSeconds,
+} from "@/lib/security/rate-limit";
+import { resolveAnonId } from "@/lib/security/anon-identity";
 
 type DraftResponse = {
   matched: boolean;
@@ -46,14 +52,29 @@ export async function POST(request: NextRequest) {
   const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
   const userMessageId =
     typeof body.userMessageId === "string" ? body.userMessageId : "";
-  const anonymousId =
-    typeof body.anonymousId === "string" ? body.anonymousId : "";
+  const anonymousId = await resolveAnonId(
+    typeof body.anonymousId === "string" ? body.anonymousId : undefined,
+  );
 
   if (!message) {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
   }
   if (message.length > 4000) {
     return NextResponse.json({ error: "message too long" }, { status: 413 });
+  }
+
+  const draftLimit = checkRateLimit(clientRateKey("incident-draft", request, anonymousId), {
+    windowMs: 60_000,
+    max: 8,
+  });
+  if (!draftLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many drafting requests. Please wait a moment." },
+      {
+        status: 429,
+        headers: { "retry-after": String(rateLimitRetryAfterSeconds(draftLimit)) },
+      },
+    );
   }
 
   const intent = detectIncidentIntent(message);

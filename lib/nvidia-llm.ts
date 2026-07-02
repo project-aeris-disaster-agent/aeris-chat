@@ -334,7 +334,11 @@ export function normalizeChatMessages(raw: unknown): ChatMessage[] {
 
 export function authorizeLlmProxy(request: Request): boolean {
   const expected = process.env.LLM_API_KEY?.trim();
-  if (!expected) return true;
+  if (!expected) {
+    // Fail closed: an unset key must not leave the proxy open in production.
+    // Allow only when explicitly opted in for local development.
+    return process.env.LLM_PROXY_OPEN === "true";
+  }
   const auth = request.headers.get("authorization") ?? "";
   return auth === `Bearer ${expected}`;
 }

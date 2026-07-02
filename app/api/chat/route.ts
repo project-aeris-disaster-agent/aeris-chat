@@ -23,6 +23,12 @@ import {
   formatWeatherLiveContextBlock,
 } from '@/lib/weather/build-context'
 import { runWeatherTool, WEATHER_AGENT_TOOLS } from '@/lib/weather/agent-tools'
+import {
+  checkRateLimit,
+  clientRateKey,
+  rateLimitRetryAfterSeconds,
+} from '@/lib/security/rate-limit'
+import { resolveAnonId } from '@/lib/security/anon-identity'
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,7 +63,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { sessionId, messages, anonymousId, location: rawLocation } = body ?? {}
+    const { sessionId, messages, anonymousId: bodyAnonId, location: rawLocation } = body ?? {}
+
+    // Server-authoritative identity from the signed cookie; the body value is
+    // only a first-use hint and is never trusted for ownership.
+    const anonymousId = await resolveAnonId(bodyAnonId)
+
+    // Generous ceiling: normal conversation (including emergency/SOS chat) never
+    // approaches this, but it caps automated credit-burn loops against the LLM.
+    const chatLimit = checkRateLimit(clientRateKey('chat', request, anonymousId), {
+      windowMs: 60_000,
+      max: 20,
+    })
+    if (!chatLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many messages. Please wait a moment and try again.' },
+        {
+          status: 429,
+          headers: { 'retry-after': String(rateLimitRetryAfterSeconds(chatLimit)) },
+        },
+      )
+    }
 
     if (
       !sessionId ||

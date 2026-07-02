@@ -3,13 +3,16 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { AUTH_DISABLED } from '@/lib/config'
+import { resolveAnonId } from '@/lib/security/anon-identity'
 
 // Get messages for a session
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
     const sessionId = searchParams.get('sessionId')
-    const anonymousId = searchParams.get('anonymousId')
+    // Authoritative anonymous identity comes from the signed cookie, never the
+    // query string — this closes the forged-anonymousId access path.
+    const anonymousId = await resolveAnonId(searchParams.get('anonymousId'))
 
     if (!sessionId) {
       return NextResponse.json({ error: 'sessionId is required' }, { status: 400 })
@@ -53,19 +56,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch messages
+    // Fetch the most recent messages (capped) so a very long history never
+    // pulls thousands of rows at once, then restore chronological order.
     const { data, error } = await serviceClient
       .from('messages')
       .select('*')
       .eq('session_id', sessionId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
+      .limit(200)
 
     if (error) {
       console.error('Error fetching messages:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json(data || [])
+    return NextResponse.json((data || []).reverse())
   } catch (error: any) {
     console.error('Messages fetch error:', error)
     return NextResponse.json(

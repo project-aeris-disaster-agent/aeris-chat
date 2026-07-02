@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { AUTH_DISABLED } from '@/lib/config'
 import { getClientIP } from '@/lib/utils/anonymous-session'
+import { resolveAnonId } from '@/lib/security/anon-identity'
 
 // Create session API route
 export async function POST(request: NextRequest) {
@@ -22,24 +23,15 @@ export async function POST(request: NextRequest) {
       if (user) {
         // Authenticated user
         userId = user.id
-      } else if (anonymousId) {
-        // Anonymous session
-        sessionAnonymousId = anonymousId
       } else {
-        return NextResponse.json(
-          { error: 'Unauthorized. Please authenticate or provide anonymousId.' },
-          { status: 401 }
-        )
+        // Anonymous session — server-derived identity (signed cookie).
+        sessionAnonymousId = await resolveAnonId(anonymousId)
       }
     } else {
-      // AUTH_DISABLED: always anonymous
-      if (!anonymousId) {
-        return NextResponse.json(
-          { error: 'anonymousId is required when auth is disabled' },
-          { status: 400 }
-        )
-      }
-      sessionAnonymousId = anonymousId
+      // AUTH_DISABLED: always anonymous. Identity is derived server-side from a
+      // signed cookie (adopting the client's id on first use), never trusted
+      // from the body.
+      sessionAnonymousId = await resolveAnonId(anonymousId)
     }
 
     const ipAddress = getClientIP(request)
@@ -95,25 +87,17 @@ export async function GET(request: NextRequest) {
 
     if (!AUTH_DISABLED) {
       const { data: { user } } = await supabase.auth.getUser()
-      
+
       if (user) {
         // Authenticated user
         userId = user.id
-      } else if (anonymousId) {
-        // Anonymous session
-        sessionAnonymousId = anonymousId
       } else {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        // Anonymous session — server-derived identity (signed cookie).
+        sessionAnonymousId = await resolveAnonId(anonymousId)
       }
     } else {
-      // AUTH_DISABLED: always anonymous
-      if (!anonymousId) {
-        return NextResponse.json(
-          { error: 'anonymousId is required' },
-          { status: 400 }
-        )
-      }
-      sessionAnonymousId = anonymousId
+      // AUTH_DISABLED: always anonymous, server-derived identity.
+      sessionAnonymousId = await resolveAnonId(anonymousId)
     }
 
     // Use service role client for queries

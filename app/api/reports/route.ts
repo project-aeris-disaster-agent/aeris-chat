@@ -8,6 +8,13 @@ import {
   sharedSupabaseReportsEnabled,
 } from "@/lib/reports/shared-supabase";
 import { notifyTriageForReport, triageNotifyEnabled } from "@/lib/reports/triage-notify";
+import { assessReportQuality, isUrgentReport } from "@/lib/reports/spam-heuristics";
+import {
+  checkRateLimit,
+  clientRateKey,
+  rateLimitRetryAfterSeconds,
+} from "@/lib/security/rate-limit";
+import { resolveAnonId } from "@/lib/security/anon-identity";
 
 function isPosition(value: unknown): value is [number, number] {
   return (
@@ -18,15 +25,28 @@ function isPosition(value: unknown): value is [number, number] {
 }
 
 function sanitizePhotoUrl(value: unknown): string | undefined {
-  // Per the Dashboard intake contract, photoUrl must be an http(s) URL only.
+  // photoUrl must point at our own incident-photos storage bucket. This blocks
+  // arbitrary-URL injection (SSRF / off-platform image hotlinking / tracking).
   if (typeof value !== "string" || value.trim() === "") return undefined;
+  let url: URL;
   try {
-    const url = new URL(value.trim());
-    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
-    return url.toString();
+    url = new URL(value.trim());
   } catch {
     return undefined;
   }
+  if (url.protocol !== "https:") return undefined;
+  if (!url.pathname.includes("/storage/v1/object/public/incident-photos/")) {
+    return undefined;
+  }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (supabaseUrl) {
+    try {
+      if (url.origin !== new URL(supabaseUrl).origin) return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return url.toString();
 }
 
 async function hashIp(ip: string): Promise<string> {
@@ -48,10 +68,9 @@ function getClientIp(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const anonymousId = request.nextUrl.searchParams.get("anonymousId");
-    if (!anonymousId) {
-      return NextResponse.json({ error: "anonymousId is required" }, { status: 400 });
-    }
+    // Authoritative identity from the signed cookie; the query value is ignored
+    // for ownership so callers cannot list another id's reports.
+    const anonymousId = await resolveAnonId(request.nextUrl.searchParams.get("anonymousId"));
 
     if (sharedSupabaseReportsEnabled()) {
       const shared = await listSharedSupabaseReportsByAnonymousId(anonymousId);
@@ -73,7 +92,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const category = typeof body.category === "string" ? body.category : "";
     const description = typeof body.description === "string" ? body.description.trim() : "";
-    const anonymousId = typeof body.anonymousId === "string" ? body.anonymousId : "";
+    const anonymousId = await resolveAnonId(
+      typeof body.anonymousId === "string" ? body.anonymousId : undefined,
+    );
 
     if (!category) {
       return NextResponse.json({ error: "category is required" }, { status: 400 });
@@ -84,9 +105,33 @@ export async function POST(request: NextRequest) {
     if (!isPosition(body.position)) {
       return NextResponse.json({ error: "position must be [longitude, latitude]" }, { status: 400 });
     }
-    if (!anonymousId) {
-      return NextResponse.json({ error: "anonymousId is required" }, { status: 400 });
+
+    // --- Invisible + tiered anti-spam --------------------------------------
+    // Urgent / SOS reports are ALWAYS accepted, one tap, no challenge. Only
+    // non-urgent reports are soft-throttled; over-limit urgent reports are still
+    // written but flagged for operator attention rather than rejected.
+    const urgent = isUrgentReport(category, description);
+    const rateResult = checkRateLimit(clientRateKey("report-create", request, anonymousId), {
+      windowMs: 60_000,
+      max: 5,
+    });
+    if (!urgent && !rateResult.allowed) {
+      return NextResponse.json(
+        { error: "You're filing reports too quickly. Please wait a moment." },
+        {
+          status: 429,
+          headers: { "retry-after": String(rateLimitRetryAfterSeconds(rateResult)) },
+        },
+      );
     }
+    const rateFlagged = urgent && !rateResult.allowed;
+
+    // Quality gate for NON-urgent reports only: low-quality ones publish as
+    // "pending" (moderation queue) instead of "visible". Urgent stays visible.
+    const quality = urgent
+      ? { lowQuality: false, reasons: [] as string[] }
+      : assessReportQuality({ description, position: body.position });
+    const moderationStatus = quality.lowQuality ? "pending" : "visible";
 
     const ipHash = await hashIp(getClientIp(request));
     const photoUrl = sanitizePhotoUrl(body.photoUrl);
@@ -104,8 +149,14 @@ export async function POST(request: NextRequest) {
               ? body.locationAccuracyM
               : undefined,
           photoUrl,
-          metadata: body.metadata && typeof body.metadata === "object" ? body.metadata : {},
+          metadata: {
+            ...(body.metadata && typeof body.metadata === "object" ? body.metadata : {}),
+            urgent,
+            ...(rateFlagged ? { rate_flagged: true } : {}),
+            ...(quality.reasons.length ? { quality_flags: quality.reasons } : {}),
+          },
           ipHash,
+          moderationStatus,
         });
 
         if (triageNotifyEnabled() && report?.id) {
@@ -129,7 +180,12 @@ export async function POST(request: NextRequest) {
           ? body.locationAccuracyM
           : undefined,
       photoUrl,
-      metadata: body.metadata && typeof body.metadata === "object" ? body.metadata : {},
+      metadata: {
+        ...(body.metadata && typeof body.metadata === "object" ? body.metadata : {}),
+        urgent,
+        ...(rateFlagged ? { rate_flagged: true } : {}),
+        ...(quality.reasons.length ? { quality_flags: quality.reasons } : {}),
+      },
     });
 
     return NextResponse.json({ report });
@@ -143,13 +199,12 @@ export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
     const id = typeof body.id === "string" ? body.id : "";
-    const anonymousId = typeof body.anonymousId === "string" ? body.anonymousId : "";
+    const anonymousId = await resolveAnonId(
+      typeof body.anonymousId === "string" ? body.anonymousId : undefined,
+    );
 
     if (!id) {
       return NextResponse.json({ error: "id is required" }, { status: 400 });
-    }
-    if (!anonymousId) {
-      return NextResponse.json({ error: "anonymousId is required" }, { status: 400 });
     }
 
     const deleted = await deleteReport(id, anonymousId);

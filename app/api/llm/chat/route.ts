@@ -48,6 +48,16 @@ import {
 
 } from "@/lib/nvidia-llm";
 
+import {
+
+  checkRateLimit,
+
+  clientRateKey,
+
+  rateLimitRetryAfterSeconds,
+
+} from "@/lib/security/rate-limit";
+
 
 
 export async function GET() {
@@ -73,6 +83,34 @@ export async function POST(request: NextRequest) {
   if (!authorizeLlmProxy(request)) {
 
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+
+  }
+
+
+
+  const limit = checkRateLimit(clientRateKey("llm-chat", request), {
+
+    windowMs: 60_000,
+
+    max: 30,
+
+  });
+
+  if (!limit.allowed) {
+
+    return NextResponse.json(
+
+      { error: "Too many requests. Please slow down." },
+
+      {
+
+        status: 429,
+
+        headers: { "retry-after": String(rateLimitRetryAfterSeconds(limit)) },
+
+      },
+
+    );
 
   }
 

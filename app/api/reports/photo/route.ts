@@ -2,6 +2,12 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  checkRateLimit,
+  clientRateKey,
+  rateLimitRetryAfterSeconds,
+} from "@/lib/security/rate-limit";
+import { resolveAnonId } from "@/lib/security/anon-identity";
 
 const BUCKET = "incident-photos";
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB, matches bucket file_size_limit
@@ -41,7 +47,24 @@ export async function POST(request: NextRequest) {
   }
 
   const file = form.get("file");
-  const anonymousId = sanitizeAnonymousId(String(form.get("anonymousId") ?? ""));
+  // Storage path is scoped to the server-authoritative id, not the form value.
+  const anonymousId = sanitizeAnonymousId(
+    await resolveAnonId(String(form.get("anonymousId") ?? "")),
+  );
+
+  const uploadLimit = checkRateLimit(clientRateKey("report-photo", request, anonymousId), {
+    windowMs: 60 * 60 * 1000,
+    max: 20,
+  });
+  if (!uploadLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many photo uploads. Please try again later." },
+      {
+        status: 429,
+        headers: { "retry-after": String(rateLimitRetryAfterSeconds(uploadLimit)) },
+      },
+    );
+  }
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "file is required" }, { status: 400 });

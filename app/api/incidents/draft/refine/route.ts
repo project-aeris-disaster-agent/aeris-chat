@@ -15,6 +15,11 @@ import {
   incidentDraftsEnabled,
   patchDraft,
 } from "@/lib/incidents/draft-store";
+import {
+  checkRateLimit,
+  clientRateKey,
+  rateLimitRetryAfterSeconds,
+} from "@/lib/security/rate-limit";
 
 export async function POST(request: NextRequest) {
   if (!incidentDraftsEnabled()) {
@@ -38,6 +43,20 @@ export async function POST(request: NextRequest) {
   }
   if (userMessage.length > 4000) {
     return NextResponse.json({ error: "message too long" }, { status: 413 });
+  }
+
+  const refineLimit = checkRateLimit(clientRateKey("incident-refine", request), {
+    windowMs: 60_000,
+    max: 12,
+  });
+  if (!refineLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many refine requests. Please wait a moment." },
+      {
+        status: 429,
+        headers: { "retry-after": String(rateLimitRetryAfterSeconds(refineLimit)) },
+      },
+    );
   }
 
   const existing = await getDraftById(draftId);
