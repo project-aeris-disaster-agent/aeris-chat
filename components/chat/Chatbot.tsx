@@ -957,7 +957,7 @@ export function Chatbot() {
             {/* Footer */}
             <div className="w-full pb-safe pb-2 md:pb-1.5 lg:pb-2 text-center flex-shrink-0">
               <p className="text-[0.525rem] md:text-[0.525rem] lg:text-[0.6125rem] text-foreground dark:text-white">
-                New Prontera Tehcnologies Corp.™
+                New Prontera Technologies Corp.™
                 <br />
                 All Rights Reserved 2026
               </p>
