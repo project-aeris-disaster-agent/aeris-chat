@@ -17,10 +17,12 @@ import {
 } from '@/lib/nvidia-llm'
 import { getCitizenSystemPrompt } from '@/lib/character/aeris-character'
 import { getClientIP } from '@/lib/utils/anonymous-session'
-import { detectWeatherIntent } from '@/lib/weather/intent'
+import { detectWeatherIntentWithHistory } from '@/lib/weather/intent'
+import { detectPlaceMention } from '@/lib/weather/place-mention'
 import {
   buildWeatherLiveContext,
   formatWeatherLiveContextBlock,
+  type ForecastPlaceOverride,
 } from '@/lib/weather/build-context'
 import { runWeatherTool, WEATHER_AGENT_TOOLS } from '@/lib/weather/agent-tools'
 import {
@@ -237,7 +239,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const weatherIntent = detectWeatherIntent(latestUserMessage)
+    // Weather intent with follow-up support: a short reply like "and in
+    // Baguio?" inherits the intent of a recent weather question.
+    const allUserMessages = sanitizedMessages
+      .filter((m) => m.role === 'user')
+      .map((m) => m.content)
+    const priorUserMessages = allUserMessages.slice(0, -1)
+    const weatherIntent = detectWeatherIntentWithHistory(
+      latestUserMessage,
+      priorUserMessages,
+    )
 
     const clientIp = getClientIP(request) ?? 'unknown'
     const clientLocation = parseChatLocationPayload(rawLocation)
@@ -255,10 +266,23 @@ export async function POST(request: NextRequest) {
       // Widen the forecast window when the user asks about "this week".
       const wantsWeek = /\b(week|linggo|days)\b/i.test(latestUserMessage)
       const days = wantsWeek ? 7 : undefined
+
+      // If the user named a known PH city ("will it rain in Cebu?"), fetch
+      // the forecast for that place instead of their own coordinates.
+      const placeMention = detectPlaceMention(latestUserMessage)
+      const placeOverride: ForecastPlaceOverride | null = placeMention
+        ? {
+            label: `${placeMention.name}, ${placeMention.region}`,
+            lat: placeMention.lat,
+            lng: placeMention.lng,
+          }
+        : null
+
       const liveContext = await buildWeatherLiveContext(
         resolvedLocation,
         weatherIntent.kind,
         days,
+        placeOverride,
       )
       hasUsableWeatherData = Boolean(
         liveContext.forecast?.available || liveContext.cyclones?.available,

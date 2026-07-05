@@ -6,7 +6,8 @@
  */
 
 import { detectIncidentIntent } from "../lib/incidents/intent";
-import { detectWeatherIntent } from "../lib/weather/intent";
+import { detectWeatherIntent, detectWeatherIntentWithHistory } from "../lib/weather/intent";
+import { detectPlaceMention } from "../lib/weather/place-mention";
 
 type Case = {
   name: string;
@@ -81,6 +82,45 @@ for (const testCase of cases) {
   const result = detectWeatherIntent(testCase.input);
   check(testCase.name, testCase.expect(result), JSON.stringify(result));
 }
+
+console.log("\n[ detectWeatherIntentWithHistory ]");
+
+const rainHistory = ["will it rain today?"];
+const followUp = detectWeatherIntentWithHistory("and in Baguio?", rainHistory);
+check(
+  "short follow-up inherits forecast intent",
+  followUp.match && followUp.kind === "forecast" && followUp.signals.includes("follow-up:forecast"),
+  JSON.stringify(followUp),
+);
+check(
+  "long topic change does not inherit",
+  !detectWeatherIntentWithHistory(
+    "can you explain how I should prepare an emergency go-bag for my family of five including documents and medicine",
+    rainHistory,
+  ).match,
+);
+check(
+  "follow-up without weather history stays unmatched",
+  !detectWeatherIntentWithHistory("and in Baguio?", ["hello aeris"]).match,
+);
+check(
+  "incident phrasing never inherits weather intent",
+  !detectWeatherIntentWithHistory("tulong! binabaha kami", rainHistory).match,
+);
+
+console.log("\n[ detectPlaceMention ]");
+
+const cebu = detectPlaceMention("will it rain in Cebu tomorrow?");
+check("detects Cebu alias", cebu?.name === "Cebu City", JSON.stringify(cebu));
+const cebuCity = detectPlaceMention("typhoon signal sa Cebu City?");
+check("longest alias wins for Cebu City", cebuCity?.name === "Cebu City");
+const qc = detectPlaceMention("baha ba sa QC?");
+check("detects QC alias", qc?.name === "Quezon City", JSON.stringify(qc));
+check("no false place on plain question", detectPlaceMention("will it rain today?") === null);
+check(
+  "no substring false positive (Cebuano)",
+  detectPlaceMention("can you speak Cebuano?") === null,
+);
 
 console.log("\n[ incident vs weather separation ]");
 const incidentMessage = "binabaha kami sa Marikina";

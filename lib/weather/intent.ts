@@ -103,3 +103,45 @@ export function detectWeatherIntent(rawMessage: string): WeatherIntentMatch {
 
   return { match: true, kind, signals };
 }
+
+/** Short replies within this length can inherit weather intent from history. */
+const FOLLOW_UP_MAX_CHARS = 80;
+/** How many prior user turns to scan for an inheritable weather intent. */
+const FOLLOW_UP_LOOKBACK = 3;
+
+/**
+ * Like detectWeatherIntent, but lets a short follow-up ("and in Baguio?",
+ * "what about Saturday?") inherit the weather intent of a recent user turn
+ * that matched. Long messages never inherit — a topic change should not drag
+ * stale weather context along.
+ *
+ * `priorUserMessages` must be ordered oldest-first (the natural transcript
+ * order); only the most recent turns are scanned.
+ */
+export function detectWeatherIntentWithHistory(
+  rawMessage: string,
+  priorUserMessages: string[],
+): WeatherIntentMatch {
+  const direct = detectWeatherIntent(rawMessage);
+  if (direct.match) return direct;
+
+  // Direct signals like "skipped:incident-intent" must stand: an active
+  // incident report is never a weather follow-up.
+  if (direct.signals.includes("skipped:incident-intent")) return direct;
+
+  if (rawMessage.trim().length > FOLLOW_UP_MAX_CHARS) return direct;
+
+  const recent = priorUserMessages.slice(-FOLLOW_UP_LOOKBACK);
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const prior = detectWeatherIntent(recent[i]);
+    if (prior.match && prior.kind) {
+      return {
+        match: true,
+        kind: prior.kind,
+        signals: [...direct.signals, `follow-up:${prior.kind}`],
+      };
+    }
+  }
+
+  return direct;
+}

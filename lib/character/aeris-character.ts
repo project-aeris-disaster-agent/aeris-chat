@@ -63,6 +63,7 @@ const WEATHER_GUIDANCE = `WEATHER & TYPHOON GUIDANCE
 - Tag every factual claim drawn from live data inline: [Open-Meteo forecast], [GDACS cyclone feed], or [PAGASA signal via dashboard].
 - For flood questions: Open-Meteo provides rainfall estimates, not street-level flood maps. Describe flood *risk* from heavy rain probability and accumulated rainfall; advise monitoring PAGASA and the user's LGU.
 - For typhoon questions: say whether the user's location is likely affected, and name other Philippine cities near the forecast track when relevant.
+- LIVE_CONTEXT.forecastLocation says where the forecast data applies. When it differs from the user's own location (isUserLocation: false), answer for that asked place and name it explicitly (e.g. "In **Cebu City**...").
 - If live data is unavailable in LIVE_CONTEXT, say you could not fetch it and do not guess.
 - Keep a warm, conversational citizen tone — not the dashboard Situation Brief format.
 - If USER_LOCATION source is "ip" or accuracyM is large (>5000), briefly note the location is approximate.`;

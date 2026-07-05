@@ -1,7 +1,8 @@
 import type { NvidiaToolDef } from "@/lib/nvidia-llm";
 import type { ChatLocationPayload } from "@/lib/chat/location-payload";
-import { fetchActiveCyclones } from "@/lib/weather/gdacs";
-import { fetchWeatherForecast, getWeatherPrefetchDays } from "@/lib/weather/open-meteo";
+import { cachedFetchActiveCyclones, cachedFetchWeatherForecast } from "@/lib/weather/cache";
+import { geocodePlace } from "@/lib/weather/geocode";
+import { getWeatherPrefetchDays } from "@/lib/weather/open-meteo";
 import { assessTyphoonImpact } from "@/lib/weather/proximity";
 
 export const GET_WEATHER_FORECAST_TOOL: NvidiaToolDef = {
@@ -62,10 +63,31 @@ export const LOOKUP_TYPHOON_SIGNAL_TOOL: NvidiaToolDef = {
   },
 };
 
+export const GEOCODE_PLACE_TOOL: NvidiaToolDef = {
+  type: "function",
+  function: {
+    name: "geocode_place",
+    description:
+      "Resolve a place name (city, town, province) to latitude/longitude. Use when the user asks about weather in a named place and you don't have its coordinates; then call get_weather_forecast with the result.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Place name, e.g. 'Cebu City' or 'Bulacan'.",
+        },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
+};
+
 export const WEATHER_AGENT_TOOLS: NvidiaToolDef[] = [
   GET_WEATHER_FORECAST_TOOL,
   GET_ACTIVE_TYPHOONS_TOOL,
   LOOKUP_TYPHOON_SIGNAL_TOOL,
+  GEOCODE_PLACE_TOOL,
 ];
 
 export type WeatherToolContext = {
@@ -118,10 +140,10 @@ export async function runWeatherTool(
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
         return { error: "lat and lng are required numbers" };
       }
-      return fetchWeatherForecast(lat, lng, days);
+      return cachedFetchWeatherForecast(lat, lng, days);
     }
     case "get_active_typhoons": {
-      const cyclones = await fetchActiveCyclones();
+      const cyclones = await cachedFetchActiveCyclones();
       if (!cyclones.available) return cyclones;
       const loc = context.userLocation;
       if (!loc) {
@@ -136,6 +158,11 @@ export async function runWeatherTool(
     case "lookup_typhoon_signal": {
       const area = typeof args.area === "string" ? args.area.trim() : "";
       return lookupTyphoonSignal(area);
+    }
+    case "geocode_place": {
+      const name = typeof args.name === "string" ? args.name.trim() : "";
+      if (!name) return { error: "name is required" };
+      return geocodePlace(name);
     }
     default:
       return { error: `Unknown tool: ${name}` };
