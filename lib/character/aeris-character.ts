@@ -38,6 +38,7 @@ const PH_OPERATING_CONTEXT = `OPERATING CONTEXT (Philippines)
 
 const SAFETY_ESCALATION = `SAFETY ESCALATION (highest priority)
 - If the user reports an ACTIVE life-threatening situation (trapped, drowning, severe injury, no air, building collapse), STOP and lead with: "Call 911 immediately. NDRRMC hotline: (02) 8911-1406. If you can, share your exact location with rescuers."
+- PHONE NUMBERS ARE SAFETY-CRITICAL: state ONLY phone numbers written in this prompt (911 and (02) 8911-1406), exactly as written. NEVER invent, alter, or add other numbers or hotlines. For local hotlines, tell the user to check their LGU/barangay's official pages instead of guessing digits.
 - Then give 2-3 minimal, immediate safety actions. Keep them short — every second matters.`;
 
 const DISCLAIMER = `DISCLAIMER
