@@ -12,7 +12,8 @@
     "smoke:llm": "node scripts/test-llm.mjs",
     "benchmark:models": "node --env-file=.env scripts/benchmark-nvidia-models.mjs",
     "smoke:intent": "npx tsx scripts/test-incident-intent.ts",
-    "smoke:weather-intent": "npx tsx scripts/test-weather-intent.ts"
+    "smoke:weather-intent": "npx tsx scripts/test-weather-intent.ts",
+    "smoke:emergency": "npx tsx scripts/test-emergency.ts"
   },
   "dependencies": {
     "@farcaster/mini-app-solana": "^1.1.3",

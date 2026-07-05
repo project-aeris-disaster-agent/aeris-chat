@@ -19,6 +19,13 @@ import { getCitizenSystemPrompt } from '@/lib/character/aeris-character'
 import { getClientIP } from '@/lib/utils/anonymous-session'
 import { detectWeatherIntentWithHistory } from '@/lib/weather/intent'
 import { detectPlaceMention } from '@/lib/weather/place-mention'
+import { detectIncidentIntent } from '@/lib/incidents/intent'
+import { detectEmergencyInfoIntent } from '@/lib/emergency/intent'
+import {
+  formatHotlineContextBlock,
+  getHotlineDirectory,
+} from '@/lib/emergency/hotlines'
+import { findNearbyEvacCenters } from '@/lib/emergency/evac-centers'
 import {
   buildWeatherLiveContext,
   formatWeatherLiveContextBlock,
@@ -288,6 +295,21 @@ export async function POST(request: NextRequest) {
         liveContext.forecast?.available || liveContext.cyclones?.available,
       )
       contextBlocks.push(formatWeatherLiveContextBlock(liveContext))
+    }
+
+    // Emergency reference prefetch: verified hotlines whenever the user asks
+    // for numbers OR reports an active incident (SOS answers must ground
+    // their phone numbers); nearby evacuation centers when asked to evacuate.
+    const emergencyInfo = detectEmergencyInfoIntent(latestUserMessage)
+    const incidentIntent = detectIncidentIntent(latestUserMessage)
+    if (emergencyInfo.match || incidentIntent.match) {
+      const [lng, lat] = resolvedLocation?.position ?? [undefined, undefined]
+      contextBlocks.push(formatHotlineContextBlock(getHotlineDirectory(lat, lng)))
+
+      if (emergencyInfo.evac && resolvedLocation) {
+        const evac = await findNearbyEvacCenters(lat as number, lng as number)
+        contextBlocks.push(`EVAC_CENTERS (JSON):\n${JSON.stringify(evac, null, 2)}`)
+      }
     }
 
     const systemMessages: NvidiaChatMessage[] = []

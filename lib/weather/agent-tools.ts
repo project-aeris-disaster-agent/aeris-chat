@@ -1,5 +1,7 @@
 import type { NvidiaToolDef } from "@/lib/nvidia-llm";
 import type { ChatLocationPayload } from "@/lib/chat/location-payload";
+import { findNearbyEvacCenters } from "@/lib/emergency/evac-centers";
+import { getHotlineDirectory } from "@/lib/emergency/hotlines";
 import { cachedFetchActiveCyclones, cachedFetchWeatherForecast } from "@/lib/weather/cache";
 import { geocodePlace } from "@/lib/weather/geocode";
 import { getWeatherPrefetchDays } from "@/lib/weather/open-meteo";
@@ -83,11 +85,44 @@ export const GEOCODE_PLACE_TOOL: NvidiaToolDef = {
   },
 };
 
+export const FIND_EVAC_CENTERS_TOOL: NvidiaToolDef = {
+  type: "function",
+  function: {
+    name: "find_evac_centers",
+    description:
+      "Find community-mapped evacuation centers near coordinates (OpenStreetMap). Defaults to the user's location when lat/lng are omitted. Always relay the verify-with-barangay advisory.",
+    parameters: {
+      type: "object",
+      properties: {
+        lat: { type: "number", description: "Latitude (optional, defaults to user)." },
+        lng: { type: "number", description: "Longitude (optional, defaults to user)." },
+      },
+      additionalProperties: false,
+    },
+  },
+};
+
+export const GET_EMERGENCY_HOTLINES_TOOL: NvidiaToolDef = {
+  type: "function",
+  function: {
+    name: "get_emergency_hotlines",
+    description:
+      "Get the verified emergency hotline directory for the user's location (national + regional + city tiers). These are the only phone numbers you may state.",
+    parameters: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+};
+
 export const WEATHER_AGENT_TOOLS: NvidiaToolDef[] = [
   GET_WEATHER_FORECAST_TOOL,
   GET_ACTIVE_TYPHOONS_TOOL,
   LOOKUP_TYPHOON_SIGNAL_TOOL,
   GEOCODE_PLACE_TOOL,
+  FIND_EVAC_CENTERS_TOOL,
+  GET_EMERGENCY_HOTLINES_TOOL,
 ];
 
 export type WeatherToolContext = {
@@ -163,6 +198,23 @@ export async function runWeatherTool(
       const name = typeof args.name === "string" ? args.name.trim() : "";
       if (!name) return { error: "name is required" };
       return geocodePlace(name);
+    }
+    case "find_evac_centers": {
+      let lat = Number(args.lat);
+      let lng = Number(args.lng);
+      if ((!Number.isFinite(lat) || !Number.isFinite(lng)) && context.userLocation) {
+        [lng, lat] = context.userLocation.position;
+      }
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return { error: "No coordinates available; ask the user for their location." };
+      }
+      return findNearbyEvacCenters(lat, lng);
+    }
+    case "get_emergency_hotlines": {
+      const loc = context.userLocation;
+      if (!loc) return getHotlineDirectory();
+      const [lng, lat] = loc.position;
+      return getHotlineDirectory(lat, lng);
     }
     default:
       return { error: `Unknown tool: ${name}` };
