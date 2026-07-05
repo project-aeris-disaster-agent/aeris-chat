@@ -20,13 +20,13 @@ import {
   emergencyHotlines,
   HOTLINE_REGION_FILTERS,
   matchesHotlineRegionFilter,
-  nagaQuickAccessHotlines,
   normalizePhoneNumber,
   sortHotlinesForNaga,
   type EmergencyHotline,
   type HotlineRegionFilter,
   type QuickAccessHotlineIcon,
 } from "@/data/emergency-hotlines";
+import { getHotlineLocale } from "@/lib/emergency/hotlines";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -78,17 +78,25 @@ const QUICK_ACCESS_ICON_STYLES: Record<
 interface EmergencyHotlinesModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** [lng, lat] of the detected user location; tunes quick access + default tab. */
+  position?: [number, number] | null;
 }
 
-export function EmergencyHotlinesModal({ isOpen, onClose }: EmergencyHotlinesModalProps) {
+export function EmergencyHotlinesModal({ isOpen, onClose, position }: EmergencyHotlinesModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedArea, setSelectedArea] = useState<HotlineRegionFilter>("naga-city");
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
 
+  // Location-aware defaults; falls back to the Naga set without a location.
+  const locale = useMemo(
+    () => getHotlineLocale(position?.[1], position?.[0]),
+    [position],
+  );
+
   useEffect(() => {
     if (isOpen) {
       setSearchQuery("");
-      setSelectedArea("naga-city");
+      setSelectedArea(locale.defaultFilter);
 
       // Auto-launch the guided tutorial the first time a user opens hotlines.
       try {
@@ -100,7 +108,7 @@ export function EmergencyHotlinesModal({ isOpen, onClose }: EmergencyHotlinesMod
         // localStorage unavailable — skip auto-open silently.
       }
     }
-  }, [isOpen]);
+  }, [isOpen, locale.defaultFilter]);
 
   const filteredHotlines = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -198,7 +206,7 @@ export function EmergencyHotlinesModal({ isOpen, onClose }: EmergencyHotlinesMod
                   Emergency HOTLINE Numbers
                 </h2>
                 <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground md:text-xs">
-                  Naga City &amp; Bicol disaster hotlines
+                  {locale.subtitle}
                 </p>
               </div>
             </div>
@@ -251,13 +259,13 @@ export function EmergencyHotlinesModal({ isOpen, onClose }: EmergencyHotlinesMod
             </p>
           </div>
 
-          {/* Naga City quick-dial */}
+          {/* Location-aware quick-dial (Naga set preserved when near Naga) */}
           <div className="px-4 pt-4 md:px-6 md:pt-6">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Quick access · Naga City
+              Quick access · {locale.quickLabel}
             </p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {nagaQuickAccessHotlines.map((entry) => {
+              {locale.quickAccess.map((entry) => {
                 const Icon = QUICK_ACCESS_ICONS[entry.icon];
                 const iconStyle = QUICK_ACCESS_ICON_STYLES[entry.icon];
                 return (

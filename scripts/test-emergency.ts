@@ -5,11 +5,12 @@
  * Run with: npm run smoke:emergency
  */
 
-import { PH_HOTLINES } from "../data/ph-hotlines";
+import { emergencyHotlines, nagaQuickAccessHotlines } from "../data/emergency-hotlines";
 import { parseElements, type OverpassElement } from "../lib/emergency/evac-centers";
 import {
   formatHotlineContextBlock,
   getHotlineDirectory,
+  getHotlineLocale,
   resolveRegionForCoords,
 } from "../lib/emergency/hotlines";
 import { detectEmergencyInfoIntent } from "../lib/emergency/intent";
@@ -27,22 +28,34 @@ function check(name: string, cond: boolean, detail?: string) {
   }
 }
 
-console.log("\n[ dataset integrity ]");
+console.log("\n[ dataset integrity (consolidated data/emergency-hotlines.ts) ]");
 check(
-  "every hotline has sources and verifiedAsOf",
-  PH_HOTLINES.every((h) => h.sources.length > 0 && /^\d{4}-\d{2}$/.test(h.verifiedAsOf)),
+  "every entry has a dialable number",
+  emergencyHotlines.every((h) => Boolean(h.hotline) || h.trunkDirectLine.length > 0),
+);
+const verified = emergencyHotlines.filter((h) => h.verifiedAsOf);
+check(
+  `verified entries (${verified.length}) all carry sources + YYYY-MM stamp`,
+  verified.length >= 20 &&
+    verified.every((h) => (h.sources?.length ?? 0) > 0 && /^\d{4}-\d{2}$/.test(h.verifiedAsOf!)),
 );
 check(
-  "every hotline has at least one number",
-  PH_HOTLINES.every((h) => h.numbers.length > 0 && h.numbers.every((n) => n.trim().length >= 3)),
+  "OCD regional coverage spans 15 regions",
+  emergencyHotlines.filter((h) => h.agency.startsWith("Office of Civil Defense")).length === 15,
 );
 check(
-  "city entries always carry region + city",
-  PH_HOTLINES.filter((h) => h.scope === "city").every((h) => h.region && h.city),
+  "no dead pre-migration (02) 7-digit numbers among verified entries",
+  verified.every((h) =>
+    [h.hotline, ...h.trunkDirectLine]
+      .filter((n): n is string => Boolean(n))
+      .every((n) => !/\(0?2\)\s?\d{3}-?\d{4}(?!\d)/.test(n.replace(/\s+/g, " "))),
+  ),
 );
 check(
-  "regional entries always carry region",
-  PH_HOTLINES.filter((h) => h.scope === "regional").every((h) => h.region),
+  "PNP no longer lists the Red Cross trunkline",
+  !emergencyHotlines.some(
+    (h) => h.agency === "Philippine National Police" && h.trunkDirectLine.includes("(02) 8790-2300"),
+  ),
 );
 
 console.log("\n[ region resolution ]");
@@ -58,11 +71,27 @@ check("Tokyo -> null (never guess abroad)", resolveRegionForCoords(35.68, 139.69
 console.log("\n[ directory tiers ]");
 const marikinaDir = getHotlineDirectory(14.6507, 121.1029);
 check("Marikina: city + regional + national tiers", marikinaDir.city.length > 0 && marikinaDir.regional.length > 0 && marikinaDir.national.length >= 5);
-check("911 leads the national tier", marikinaDir.national[0].numbers.includes("911"));
+check("911 present in national tier", marikinaDir.national.some((h) => h.hotline === "911"));
+check("MMDA in NCR regional tier", marikinaDir.regional.some((h) => h.agency.includes("Metropolitan Manila")));
 const noLoc = getHotlineDirectory();
 check("no location -> national only", noLoc.city.length === 0 && noLoc.regional.length === 0);
 const block = formatHotlineContextBlock(marikinaDir);
 check("context block carries 161 and the only-these-numbers rule", block.includes("161") && block.includes("ONLY phone numbers"));
+const nir = getHotlineDirectory(10.6407, 122.9689);
+check("NIR honest: no guessed regional line", nir.regional.length === 0 && nir.advisory.length > 10);
+const naga = getHotlineDirectory(13.6192, 123.1814);
+check("Naga: NAGA CITY tier + OCD R V regional", naga.city.length >= 5 && naga.regional.some((h) => h.area === "R V"));
+
+console.log("\n[ modal locale (location-aware quick access) ]");
+const nagaLocale = getHotlineLocale(13.6192, 123.1814);
+check("Naga locale preserves curated quick-dial set", nagaLocale.quickAccess === nagaQuickAccessHotlines && nagaLocale.defaultFilter === "naga-city");
+const mkLocale = getHotlineLocale(14.6507, 121.1029);
+check("Marikina locale: city tile + MMDA + Red Cross 143", mkLocale.quickAccess.some((t) => t.shortLabel === "Marikina") && mkLocale.quickAccess.some((t) => t.shortLabel === "MMDA") && mkLocale.quickAccess.some((t) => t.number === "143"));
+check("Marikina defaults to manila-hq tab", mkLocale.defaultFilter === "manila-hq");
+const cebuLocale = getHotlineLocale(10.3157, 123.8854);
+check("Cebu locale: OCD Region VII tile + visayas tab", cebuLocale.quickAccess.some((t) => t.label.includes("Region VII")) && cebuLocale.defaultFilter === "visayas");
+const noLocale = getHotlineLocale();
+check("no location -> national tiles still offered", noLocale.quickAccess.length >= 2);
 
 console.log("\n[ emergency-info intent ]");
 check("hotline ask (EN)", detectEmergencyInfoIntent("what emergency numbers should I call?").hotlines);

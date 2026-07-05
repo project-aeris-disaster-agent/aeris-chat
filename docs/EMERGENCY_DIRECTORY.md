@@ -1,15 +1,21 @@
 # Emergency Directory — Data Policy & Maintenance
 
-The hotline directory ([data/ph-hotlines.ts](../data/ph-hotlines.ts)) and the
-evacuation-center tool ([lib/emergency/evac-centers.ts](../lib/emergency/evac-centers.ts))
-feed BOTH the chat model's context and the Quick Access UI. A wrong digit here
-reaches someone mid-emergency. These rules are not optional.
+The hotline directory ([data/emergency-hotlines.ts](../data/emergency-hotlines.ts))
+is the SINGLE source of truth feeding the EmergencyHotlinesModal UI, the
+`GET /api/hotlines` endpoint, the chat model's `EMERGENCY_HOTLINES` context,
+and the modal's location-aware quick-dial tiles
+([lib/emergency/hotlines.ts](../lib/emergency/hotlines.ts) does the selection).
+The evacuation-center tool lives in
+[lib/emergency/evac-centers.ts](../lib/emergency/evac-centers.ts). A wrong
+digit here reaches someone mid-emergency. These rules are not optional.
 
 ## Hotline rules
 
-1. **Every entry carries `sources` and `verifiedAsOf`.** No entry ships from
-   memory — only from an official agency page or an official republication
-   (embassy, LGU, agency social account), captured in the entry.
+1. **Verified entries carry `sources` and `verifiedAsOf`.** Numbers added or
+   corrected in 2026-07 all do; legacy entries without a stamp are inherited
+   from the original directory and should gain sources as they are re-checked.
+   No NEW entry ships from memory — only from an official agency page or an
+   official republication (embassy, LGU, agency social account).
 2. **Number-format discipline.** The 2019 PLDT 8-digit migration applies to
    the (02) Metro Manila area code ONLY. Provincial landlines stay 7-digit
    (confirmed against OCD R7's own directory). Aggregators that show 8-digit
@@ -54,8 +60,12 @@ cache) for facilities tagged `emergency=evacuation_centre` or
 
 ## Quick Access UI
 
-[HotlinesQuickAccess.tsx](../components/chat/HotlinesQuickAccess.tsx) (phone
-icon, top-right) fetches `GET /api/hotlines?lat=&lng=` with the banner
-location. City tier shows when the user is within 15 km of a city with
-verified numbers; otherwise the regional tier is the default, national always
-present. Numbers render as `tel:` links for one-tap dialing.
+[EmergencyHotlinesModal.tsx](../components/chat/EmergencyHotlinesModal.tsx)
+receives the banner location as a `position` prop and derives its locale via
+`getHotlineLocale`: near Naga (≤25 km) the curated Naga quick-dial set and
+"Naga City" tab are preserved unchanged; elsewhere the quick-dial tiles are
+composed from the same verified directory (city rescue when within 15 km of a
+covered city, regional OCD/MMDA, Red Cross, NDRRMC, PAGASA) and the default
+region tab follows the user's region. The broad "NCR" area also holds
+utilities/transport desks — those stay in the modal's full searchable list
+but are excluded from the emergency tier the chat model and quick access use.

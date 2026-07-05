@@ -25,7 +25,6 @@ import bagyoLogo from "@/assets/Bagyo Logo@5x.png";
 import AERISChar from "@/assets/AERIS_char.svg";
 
 import { SOSButton } from "@/components/chat/SOSButton";
-import { HotlinesQuickAccess } from "@/components/chat/HotlinesQuickAccess";
 
 import { AdBanner, QuickActionsNav } from "@/components/chat/BottomNavBar";
 
@@ -622,7 +621,6 @@ export function Chatbot() {
           right: `calc(env(safe-area-inset-right, 0px) + 0.5rem)`
         }}
       >
-        <HotlinesQuickAccess position={detectedLocation?.position ?? null} />
         <Button
           type="button"
           variant="outline"
@@ -975,6 +973,7 @@ export function Chatbot() {
       <EmergencyHotlinesModal
         isOpen={isHotlinesModalOpen}
         onClose={() => setIsHotlinesModalOpen(false)}
+        position={detectedLocation?.position ?? null}
       />
 
       {/* Autonomous SOS dispatch — confirm location & send emergency report */}

@@ -3,6 +3,10 @@ export interface EmergencyHotline {
   hotline: string | null;
   trunkDirectLine: string[];
   area: string;
+  /** Official pages the numbers were checked against. */
+  sources?: string[];
+  /** YYYY-MM of the last verification against `sources`. */
+  verifiedAsOf?: string;
 }
 
 export type HotlineTier = "quick" | "local" | "regional" | "national" | "other";
@@ -332,7 +336,12 @@ export const emergencyHotlines: EmergencyHotline[] = [
       "(052) 481-5031",
       "0928-505-3861 [Cell/Viber]"
     ],
-    area: "R V"
+    area: "R V",
+    sources: [
+      "https://drrnetphils.org/hotlines/",
+      "https://www.philembassy.no/newsroom/office-of-civil-defense-contact-numbers"
+    ],
+    verifiedAsOf: "2026-07"
   },
   {
     agency: "Camarines Sur PDRRMO - EDMERO (24/7)",
@@ -363,13 +372,18 @@ export const emergencyHotlines: EmergencyHotline[] = [
   {
     agency: "Emergency 911 National Office",
     hotline: "911",
+    // Landline trunks removed 2026-07: pre-2019 7-digit (02) numbers no
+    // longer connect. 911 itself is unified nationwide since June 2026.
     trunkDirectLine: [
-      "(02) 925-9111",
-      "(02) 928-7281 [telefax]",
       "+63966-5000-299 [Globe]",
       "+63932-318-0440 [Smart]"
     ],
-    area: "NCR"
+    area: "NCR",
+    sources: [
+      "https://pia.gov.ph/news/one-number-for-all-emergencies-unified-911-to-launch-nationwide/",
+      "https://e911.gov.ph/"
+    ],
+    verifiedAsOf: "2026-07"
   },
   {
     agency: "Bureau of Fire Protection",
@@ -458,50 +472,47 @@ export const emergencyHotlines: EmergencyHotline[] = [
     agency: "National Disaster Risk Reduction Management Council",
     hotline: "(02) 8911-5061 to 65 local 100",
     trunkDirectLine: [
-      "(02) 911-5061",
-      "(02) 911-5062",
-      "(02) 911-5063",
-      "(02) 911-5064",
-      "(02) 911-5065",
-      "(02) 911-1406",
-      "(02) 911-1873",
-      "(02) 912-2665",
-      "(02) 912-5668"
+      "(02) 8911-1406",
+      "(02) 8911-1873",
+      "(02) 8912-2665",
+      "(02) 8912-5668"
     ],
-    area: "NCR"
+    area: "NCR",
+    sources: [
+      "https://ndrrmc.gov.ph/ (official hotlines page)",
+      "https://drrnetphils.org/hotlines/"
+    ],
+    verifiedAsOf: "2026-07"
   },
   {
     agency: "PAGASA",
-    hotline: "(02) 824-0800",
+    hotline: "(02) 8284-0800",
     trunkDirectLine: [
-      "(02) 824-0800"
+      "(02) 8284-0800"
     ],
-    area: "NCR"
+    area: "NCR",
+    sources: ["https://drrnetphils.org/hotlines/"],
+    verifiedAsOf: "2026-07"
   },
   {
     agency: "Philippine Coast Guard",
     hotline: "(02) 8527-8481 to 89 | (02) 8527-3877",
     trunkDirectLine: [
-      "(02) 527-8481",
-      "(02) 527-8482",
-      "(02) 527-8483",
-      "(02) 527-8484",
-      "(02) 527-8485",
-      "(02) 527-8486",
-      "(02) 527-8487",
-      "(02) 527-8488",
-      "(02) 527-8489",
-      "(02) 527-3877",
+      "(02) 8527-8481 to 89",
+      "(02) 8527-3877",
       "0917-724-3682 [Globe]",
       "0918-967-4697 [Smart]"
     ],
-    area: "NCR"
+    area: "NCR",
+    sources: ["https://drrnetphils.org/hotlines/"],
+    verifiedAsOf: "2026-07"
   },
   {
     agency: "Philippine National Police",
     hotline: null,
+    // (02) 8790-2300 removed 2026-07: that is the Philippine Red Cross
+    // trunkline (per redcross.org.ph) and misdirected PNP callers.
     trunkDirectLine: [
-      "(02) 8790-2300",
       "(2) 722-0650",
       "+63917-847-5757"
     ],
@@ -511,11 +522,12 @@ export const emergencyHotlines: EmergencyHotline[] = [
     agency: "Philippine Red Cross",
     hotline: "143",
     trunkDirectLine: [
-      "(02) 527-0000",
-      "(02)8527-8385 to 95",
-      "(02) 8790-2300"
+      "(02) 8790-2300",
+      "(02) 8527-8385 to 95"
     ],
-    area: "NCR"
+    area: "NCR",
+    sources: ["https://redcross.org.ph/ (official site)"],
+    verifiedAsOf: "2026-07"
   },
   {
     agency: "Philippine Red Cross - Staff",
@@ -796,10 +808,14 @@ export const emergencyHotlines: EmergencyHotline[] = [
     agency: "Marikina City",
     hotline: "161",
     trunkDirectLine: [
-      "(02)646-1631",
-      "(02)646-1633"
+      "(02) 8646-2436"
     ],
-    area: "NCR - Marikina"
+    area: "NCR - Marikina",
+    sources: [
+      "https://www.facebook.com/MarikinaRescue161/ (official page)",
+      "https://goldenislandsenorita.net/manila-emergency-hotlines/"
+    ],
+    verifiedAsOf: "2026-07"
   },
   {
     agency: "Muntinlupa City",
@@ -865,9 +881,11 @@ export const emergencyHotlines: EmergencyHotline[] = [
     agency: "Quezon City",
     hotline: "122",
     trunkDirectLine: [
-      "122"
+      "(02) 8988-4242"
     ],
-    area: "NCR - Quezon City"
+    area: "NCR - Quezon City",
+    sources: ["https://quezoncity.gov.ph/ (official site)"],
+    verifiedAsOf: "2026-07"
   },
   {
     agency: "San Juan City",
@@ -909,6 +927,131 @@ export const emergencyHotlines: EmergencyHotline[] = [
       "(032) 340-2486 local 1560"
     ],
     area: "R VII"
+  },
+  // ============================================================
+  // OCD Regional Operations Centers (verified 2026-07)
+  //
+  // Format note: the 2019 8-digit migration applied to the (02) Metro
+  // Manila area code ONLY — provincial landlines stay 7-digit (confirmed
+  // against OCD R7's own directory). Aggregators showing 8-digit
+  // provincial numbers have prepended digits erroneously; do not copy
+  // them. Regions where no landline could be corroborated carry the
+  // embassy-published cell/Viber line instead — never a guessed number.
+  // ============================================================
+  {
+    agency: "Office of Civil Defense - NCR",
+    hotline: "(02) 8421-1918",
+    trunkDirectLine: ["(02) 8421-1918", "(02) 8913-2786"],
+    area: "NCR",
+    sources: ["https://www.philembassy.no/newsroom/office-of-civil-defense-contact-numbers"],
+    verifiedAsOf: "2026-07"
+  },
+  {
+    agency: "Office of Civil Defense - Cordillera (CAR)",
+    hotline: "(074) 304-2256",
+    trunkDirectLine: ["(074) 304-2256", "(074) 619-0986", "(074) 444-5298"],
+    area: "CAR",
+    sources: ["https://drrnetphils.org/hotlines/"],
+    verifiedAsOf: "2026-07"
+  },
+  {
+    agency: "Office of Civil Defense - Region I (Ilocos)",
+    hotline: "(072) 607-6528",
+    trunkDirectLine: ["(072) 607-6528", "(072) 700-4747"],
+    area: "R I",
+    sources: ["https://drrnetphils.org/hotlines/"],
+    verifiedAsOf: "2026-07"
+  },
+  {
+    agency: "Office of Civil Defense - Region II (Cagayan Valley)",
+    hotline: "(078) 304-1630",
+    trunkDirectLine: ["(078) 304-1630", "(078) 304-1631"],
+    area: "R II",
+    sources: ["https://drrnetphils.org/hotlines/"],
+    verifiedAsOf: "2026-07"
+  },
+  {
+    agency: "Office of Civil Defense - Region III (Central Luzon)",
+    hotline: "(045) 455-1526",
+    trunkDirectLine: ["(045) 455-1526", "(045) 455-0033"],
+    area: "R III",
+    sources: ["https://drrnetphils.org/hotlines/"],
+    verifiedAsOf: "2026-07"
+  },
+  {
+    agency: "Office of Civil Defense - Region IV-A (CALABARZON)",
+    hotline: "(049) 834-4344",
+    trunkDirectLine: ["(049) 834-4344", "(049) 531-7266"],
+    area: "R IV-A",
+    sources: ["https://drrnetphils.org/hotlines/"],
+    verifiedAsOf: "2026-07"
+  },
+  {
+    agency: "Office of Civil Defense - Region IV-B (MIMAROPA)",
+    hotline: "(043) 723-4248",
+    trunkDirectLine: ["(043) 723-4248", "(043) 702-9361"],
+    area: "R IV-B",
+    sources: ["https://drrnetphils.org/hotlines/"],
+    verifiedAsOf: "2026-07"
+  },
+  {
+    agency: "Office of Civil Defense - Region VI (Western Visayas)",
+    hotline: "(033) 336-9353",
+    trunkDirectLine: ["(033) 336-9353", "(033) 337-6671", "(033) 509-7319"],
+    area: "R VI",
+    sources: ["https://drrnetphils.org/hotlines/"],
+    verifiedAsOf: "2026-07"
+  },
+  {
+    agency: "Office of Civil Defense - Region VII (Central Visayas)",
+    hotline: "(032) 416-5025",
+    trunkDirectLine: ["(032) 416-5025", "(032) 253-6162", "(032) 253-8730"],
+    area: "R VII",
+    sources: [
+      "https://drrnetphils.org/hotlines/",
+      "https://ocdr7.wordpress.com/directory/ (OCD R7 official site)"
+    ],
+    verifiedAsOf: "2026-07"
+  },
+  {
+    agency: "Office of Civil Defense - Region VIII (Eastern Visayas)",
+    hotline: "+63 917-842-7606 [cell/Viber]",
+    trunkDirectLine: ["+63 917-842-7606 [cell/Viber]"],
+    area: "R VIII",
+    sources: ["https://www.philembassy.no/newsroom/office-of-civil-defense-contact-numbers"],
+    verifiedAsOf: "2026-07"
+  },
+  {
+    agency: "Office of Civil Defense - Region IX (Zamboanga Peninsula)",
+    hotline: "+63 915-647-8884 [cell/Viber]",
+    trunkDirectLine: ["+63 915-647-8884 [cell/Viber]"],
+    area: "R IX",
+    sources: ["https://www.philembassy.no/newsroom/office-of-civil-defense-contact-numbers"],
+    verifiedAsOf: "2026-07"
+  },
+  {
+    agency: "Office of Civil Defense - Region X (Northern Mindanao)",
+    hotline: "+63 917-159-4486 [cell/Viber]",
+    trunkDirectLine: ["+63 917-159-4486 [cell/Viber]"],
+    area: "R X",
+    sources: ["https://www.philembassy.no/newsroom/office-of-civil-defense-contact-numbers"],
+    verifiedAsOf: "2026-07"
+  },
+  {
+    agency: "Office of Civil Defense - Region XI (Davao)",
+    hotline: "+63 917-178-9711 [cell/Viber]",
+    trunkDirectLine: ["+63 917-178-9711 [cell/Viber]"],
+    area: "R XI",
+    sources: ["https://www.philembassy.no/newsroom/office-of-civil-defense-contact-numbers"],
+    verifiedAsOf: "2026-07"
+  },
+  {
+    agency: "Office of Civil Defense - Region XII (SOCCSKSARGEN)",
+    hotline: "+63 917-770-7771 [cell/Viber]",
+    trunkDirectLine: ["+63 917-770-7771 [cell/Viber]"],
+    area: "R XII",
+    sources: ["https://www.philembassy.no/newsroom/office-of-civil-defense-contact-numbers"],
+    verifiedAsOf: "2026-07"
   }
 ];
 
