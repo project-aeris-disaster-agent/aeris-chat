@@ -48,11 +48,14 @@ const cache = new Map<string, CacheEntry>();
 
 function buildQuery(lat: number, lng: number): string {
   const around = `around:${SEARCH_RADIUS_M},${lat},${lng}`;
-  return `[out:json][timeout:20];(
+  // Server timeout must stay under FETCH_TIMEOUT_MS so a slow server returns
+  // a parseable timeout remark (which we treat as failure) instead of us
+  // aborting mid-response. Short timeouts also cost less server quota.
+  return `[out:json][timeout:8];(
     nwr["emergency"~"^evacuation_cent(re|er)$"](${around});
     nwr["social_facility"="shelter"]["shelter_type"="evacuation"](${around});
     nwr[name~"[Ee]vacuation [Cc]ent"](${around});
-  );out center ${MAX_RESULTS * 4};`;
+  );out center qt ${MAX_RESULTS * 4};`;
 }
 
 export type OverpassElement = {
@@ -137,11 +140,20 @@ async function fetchFromOverpass(lat: number, lng: number): Promise<EvacCentersR
         lastError = `Overpass HTTP ${res.status}`;
         continue;
       }
-      const data = (await res.json()) as { elements?: OverpassElement[] };
+      const data = (await res.json()) as { elements?: OverpassElement[]; remark?: string };
+      // Overpass reports runtime errors (e.g. query timeouts) as HTTP 200
+      // with a "remark". An errored, empty response must read as
+      // "unavailable" — NEVER as "there are no centers near you".
+      const remarkError = typeof data.remark === "string" && /error/i.test(data.remark);
+      const elements = data.elements ?? [];
+      if (remarkError && elements.length === 0) {
+        lastError = `Overpass remark: ${data.remark}`;
+        continue;
+      }
       return {
         ...base,
         available: true,
-        centers: parseElements(data.elements ?? [], lat, lng),
+        centers: parseElements(elements, lat, lng),
       };
     } catch (err) {
       lastError = err instanceof Error ? err.message : "Overpass fetch failed";
