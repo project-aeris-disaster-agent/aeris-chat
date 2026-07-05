@@ -50,6 +50,28 @@ function floodRiskFromDaily(day: WeatherForecastDay): string {
   return "minimal";
 }
 
+function manilaLocalIsoMinutes(now: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "00";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+}
+
+// Open-Meteo's hourly array starts at 00:00 local time of the current day, so
+// the upcoming-24h window has to begin at the first hour >= now, not index 0.
+export function findUpcomingHourlyStartIndex(hourlyTimes: string[], now = new Date()): number {
+  const nowLocal = manilaLocalIsoMinutes(now);
+  const startIndex = hourlyTimes.findIndex((time) => time >= nowLocal);
+  return startIndex === -1 ? Math.max(0, hourlyTimes.length - 24) : startIndex;
+}
+
 export function getWeatherPrefetchDays(): number {
   const days = Number(process.env.WEATHER_PREFETCH_DAYS ?? "2");
   return Number.isFinite(days) && days >= 1 && days <= 7 ? days : 2;
@@ -126,12 +148,18 @@ export async function fetchWeatherForecast(
     });
 
     const hourlyTimes = data.hourly?.time ?? [];
-    const hourlyNext24h: WeatherForecastHour[] = hourlyTimes.slice(0, 24).map((time, index) => ({
-      time,
-      precipitationMm: data.hourly?.precipitation?.[index] ?? null,
-      precipitationProbability: data.hourly?.precipitation_probability?.[index] ?? null,
-      weatherCode: data.hourly?.weather_code?.[index] ?? null,
-    }));
+    const hourlyStart = findUpcomingHourlyStartIndex(hourlyTimes);
+    const hourlyNext24h: WeatherForecastHour[] = hourlyTimes
+      .slice(hourlyStart, hourlyStart + 24)
+      .map((time, offset) => {
+        const index = hourlyStart + offset;
+        return {
+          time,
+          precipitationMm: data.hourly?.precipitation?.[index] ?? null,
+          precipitationProbability: data.hourly?.precipitation_probability?.[index] ?? null,
+          weatherCode: data.hourly?.weather_code?.[index] ?? null,
+        };
+      });
 
     return {
       available: true,
