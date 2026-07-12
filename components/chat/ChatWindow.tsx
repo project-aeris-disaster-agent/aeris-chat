@@ -16,9 +16,14 @@ export function ChatWindow() {
   const { messages, sendMessage, isLoading: messagesLoading } = useChat(currentSessionId)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom when messages change. Defer to the next frame to ensure
+  // the DOM has fully laid out before scrolling.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const scrollToBottom = () => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+    // Use requestAnimationFrame to defer scroll until after render and layout
+    requestAnimationFrame(scrollToBottom)
   }, [messages])
 
   // Create a new session if none exists
