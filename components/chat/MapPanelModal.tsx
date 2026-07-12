@@ -1,10 +1,26 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import { X, ExternalLink, Loader2, Map } from "lucide-react";
 import { cn } from "@/lib/utils";
 import adsBanner from "@/assets/ads_v2_2026.gif";
+
+// Leaflet must stay client-only; load the pings panel lazily so the map
+// libraries aren't pulled into the initial bundle.
+const ReportPingsPanel = dynamic(
+  () => import("./ReportPingsPanel").then((m) => m.ReportPingsPanel),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Loading report pings…
+      </div>
+    ),
+  },
+);
 
 interface MapPanelModalProps {
   isOpen: boolean;
@@ -14,28 +30,31 @@ interface MapPanelModalProps {
 const HAZARD_HUNTER_MAP_URL = "https://hazardhunter.georisk.gov.ph/map";
 const PANAHON_MAP_URL = "https://www.panahon.gov.ph/";
 
-const MAP_SOURCES: Array<{ label: string; url: string }> = [
-  { label: "PANAHON Weather Map", url: PANAHON_MAP_URL },
-  { label: "Hazard Map", url: HAZARD_HUNTER_MAP_URL },
-  { label: "PAGASA Radar", url: "https://www.pagasa.dost.gov.ph/radar" },
-  { label: "OpenStreetMap", url: "https://www.openstreetmap.org/#map=6/12.8797/121.7740" },
+type MapSource =
+  | { id: string; label: string; kind: "iframe"; url: string }
+  | { id: string; label: string; kind: "pings" };
+
+const MAP_SOURCES: MapSource[] = [
+  { id: "panahon", label: "PANAHON Weather Map", kind: "iframe", url: PANAHON_MAP_URL },
+  { id: "hazard", label: "Hazard Map", kind: "iframe", url: HAZARD_HUNTER_MAP_URL },
+  { id: "pings", label: "Report Pings", kind: "pings" },
 ];
 
 export function MapPanelModal({ isOpen, onClose }: MapPanelModalProps) {
-  const [activeUrl, setActiveUrl] = useState(PANAHON_MAP_URL);
+  const [activeId, setActiveId] = useState<string>(MAP_SOURCES[0].id);
   const [isFrameLoading, setIsFrameLoading] = useState(true);
 
   const activeSource = useMemo(
-    () => MAP_SOURCES.find((source) => source.url === activeUrl) ?? MAP_SOURCES[0],
-    [activeUrl],
+    () => MAP_SOURCES.find((source) => source.id === activeId) ?? MAP_SOURCES[0],
+    [activeId],
   );
 
   if (!isOpen) return null;
 
-  const handleSelect = (url: string) => {
-    if (url === activeUrl) return;
+  const handleSelect = (id: string) => {
+    if (id === activeId) return;
     setIsFrameLoading(true);
-    setActiveUrl(url);
+    setActiveId(id);
   };
 
   return (
@@ -84,16 +103,18 @@ export function MapPanelModal({ isOpen, onClose }: MapPanelModalProps) {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <a
-                href={activeSource.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"
-                title="Open in new tab"
-              >
-                <ExternalLink className="h-4 w-4" />
-                <span className="hidden sm:inline">Open site</span>
-              </a>
+              {activeSource.kind === "iframe" && (
+                <a
+                  href={activeSource.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"
+                  title="Open in new tab"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  <span className="hidden sm:inline">Open site</span>
+                </a>
+              )}
               <button
                 type="button"
                 onClick={onClose}
@@ -107,12 +128,12 @@ export function MapPanelModal({ isOpen, onClose }: MapPanelModalProps) {
 
           <div className="flex flex-wrap gap-1.5 border-b border-border px-4 py-2 md:px-6 flex-shrink-0">
             {MAP_SOURCES.map((source) => {
-              const isActive = source.url === activeUrl;
+              const isActive = source.id === activeId;
               return (
                 <button
-                  key={source.url}
+                  key={source.id}
                   type="button"
-                  onClick={() => handleSelect(source.url)}
+                  onClick={() => handleSelect(source.id)}
                   aria-pressed={isActive}
                   className={cn(
                     "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
@@ -128,27 +149,33 @@ export function MapPanelModal({ isOpen, onClose }: MapPanelModalProps) {
           </div>
 
           <div className="relative flex-1 min-h-0 bg-muted/30">
-            {isFrameLoading && (
-              <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading {activeSource.label}…
-              </div>
+            {activeSource.kind === "pings" ? (
+              <ReportPingsPanel />
+            ) : (
+              <>
+                {isFrameLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading {activeSource.label}…
+                  </div>
+                )}
+                <iframe
+                  key={activeSource.url}
+                  src={activeSource.url}
+                  title={activeSource.label}
+                  className="h-full w-full border-0"
+                  onLoad={() => setIsFrameLoading(false)}
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              </>
             )}
-            <iframe
-              key={activeUrl}
-              src={activeUrl}
-              title={activeSource.label}
-              className="h-full w-full border-0"
-              onLoad={() => setIsFrameLoading(false)}
-              referrerPolicy="no-referrer-when-downgrade"
-            />
           </div>
 
           <div className="border-t border-border px-4 py-2 md:px-6 flex-shrink-0">
             <p className="text-[11px] leading-snug text-muted-foreground">
-              Sources: PANAHON & PAGASA (DOST), HazardHunterPH (GeoRisk Philippines / PHIVOLCS).
-              Not an official AERIS product — always follow PAGASA, NDRRMC, and your LGU for
-              evacuation orders.
+              {activeSource.kind === "pings"
+                ? "Report Pings shows individual community-submitted reports (view only). Not an official AERIS product — always follow PAGASA, NDRRMC, and your LGU for evacuation orders."
+                : "Sources: PANAHON & PAGASA (DOST), HazardHunterPH (GeoRisk Philippines / PHIVOLCS). Not an official AERIS product — always follow PAGASA, NDRRMC, and your LGU for evacuation orders."}
             </p>
           </div>
         </div>

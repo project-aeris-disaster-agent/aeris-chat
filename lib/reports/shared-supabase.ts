@@ -31,6 +31,65 @@ export function sharedSupabaseReportsEnabled() {
   return supabaseConfig() !== null;
 }
 
+/** A single, privacy-minimal report ping for the public map. */
+export type ReportPoint = {
+  /** [longitude, latitude] */
+  position: [number, number];
+  category: string;
+  createdAt: string;
+  /** True once an operator has verified the report. */
+  verified: boolean;
+  confirmations: number;
+};
+
+/**
+ * Aggregate, view-only feed of report pings. Returns ONLY coordinates,
+ * category, timestamp, and coarse trust signals — never descriptions, photos,
+ * ids, or any reporter identity. Mirrors the dashboard's visible-report filter
+ * (moderation != hidden, verification != rejected) so both surfaces agree.
+ */
+export async function listPublicReportPoints(limit = 1000): Promise<ReportPoint[]> {
+  const cfg = supabaseConfig();
+  if (!cfg) return [];
+
+  const params = new URLSearchParams({
+    select: "longitude,latitude,category,confirmations,verification_status,created_at",
+    moderation_status: "neq.hidden",
+    verification_status: "neq.rejected",
+    order: "created_at.desc",
+    limit: String(limit),
+  });
+
+  let res: Response;
+  try {
+    res = await fetch(`${cfg.url}/rest/v1/disaster_reports?${params}`, {
+      headers: headers(cfg.serviceKey),
+      cache: "no-store",
+    });
+  } catch {
+    return [];
+  }
+  if (!res.ok) return [];
+
+  const rows = (await res.json()) as Record<string, unknown>[];
+
+  return rows
+    .map((row) => {
+      const lng = Number(row.longitude);
+      const lat = Number(row.latitude);
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+
+      return {
+        position: [lng, lat] as [number, number],
+        category: String(row.category ?? "other"),
+        createdAt: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
+        verified: row.verification_status === "verified",
+        confirmations: Number(row.confirmations ?? 0),
+      };
+    })
+    .filter((point): point is ReportPoint => point !== null);
+}
+
 function headers(serviceKey: string) {
   return {
     apikey: serviceKey,
