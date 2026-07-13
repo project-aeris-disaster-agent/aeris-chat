@@ -90,7 +90,7 @@ exact error strings.
 {
   "ok": true,
   "provider": "nvidia",
-  "model": "meta/llama-4-maverick-17b-128e-instruct"
+  "model": "meta/llama-3.1-70b-instruct"
 }
 ```
 
@@ -115,9 +115,10 @@ changing the contract above:
   skills. Needed before exposing AERIS over MCP.
 - Streaming variant via `Accept: text/event-stream` on the same POST.
 - Tool-calling loop (the request shape will gain an optional `tools` array;
-  the response will gain an optional `tool_calls` array). Today the
-  primitives exist in [`../lib/incidents/agent-tools.ts`](../lib/incidents/agent-tools.ts)
-  but are not wired into this endpoint.
+  the response will gain an optional `tool_calls` array). Today weather-tool
+  primitives exist in [`../lib/weather/agent-tools.ts`](../lib/weather/agent-tools.ts)
+  and are wired into `/api/chat` via [`../lib/chat/agent-loop.ts`](../lib/chat/agent-loop.ts),
+  but not into this endpoint.
 - Provider abstraction inside [`../lib/nvidia-llm.ts`](../lib/nvidia-llm.ts)
   so swapping NVIDIA for a self-hosted Hermes or OpenChat endpoint is a
   one-file change. `provider` in the response is the contract surface that

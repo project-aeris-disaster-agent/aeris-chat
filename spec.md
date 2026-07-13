@@ -1,5 +1,8 @@
 # AI Chatbot Web Application Specification
 
+> **Historical document.** For the live app, see [README.md](README.md) and
+> [docs/CAPABILITY_REVIEW_2026-07-06.md](docs/CAPABILITY_REVIEW_2026-07-06.md).
+
 ## Overview
 
 This document outlines the specifications for developing an AI Chatbot web application using React and Next.js. The application will enable users to interact with an AI agent through a sleek chat interface, manage chat sessions, and store user information and metadata in a shared Supabase database.

@@ -77,9 +77,7 @@ export async function GET(request: NextRequest) {
 
     if (sharedSupabaseReportsEnabled()) {
       const shared = await listSharedSupabaseReportsByAnonymousId(anonymousId);
-      if (shared.length > 0) {
-        return NextResponse.json({ reports: shared });
-      }
+      return NextResponse.json({ reports: shared });
     }
 
     const reports = await listReports(anonymousId);
@@ -172,9 +170,6 @@ export async function POST(request: NextRequest) {
           void notifyTriageForReport(report.id);
         }
 
-        // Award submit_report XP to signed-in reporters. Sync the profile first
-        // because award_xp no-ops when the profile row is missing. Idempotent
-        // via the stable dedupe key, so this never double-rewards.
         if (reporterUserId && userProfilesEnabled() && report?.id) {
           try {
             await ensureUserProfile({ userId: reporterUserId });
@@ -189,7 +184,11 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ report }, { status: 201 });
       } catch (error) {
-        console.error("Shared Supabase report insert failed, falling back to local store:", error);
+        console.error("Shared Supabase report insert failed:", error);
+        return NextResponse.json(
+          { error: "Unable to save report. Please try again shortly." },
+          { status: 502 },
+        );
       }
     }
 

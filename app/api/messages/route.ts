@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { AUTH_DISABLED } from '@/lib/config'
 import { resolveAnonId } from '@/lib/security/anon-identity'
 
@@ -21,18 +22,15 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
-    // Use service role client to verify session access
-    const { createClient: createServiceClient } = await import('@supabase/supabase-js')
-    const serviceClient = createServiceClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    )
+    let serviceClient
+    try {
+      serviceClient = createServiceClient()
+    } catch {
+      return NextResponse.json(
+        { error: 'Supabase service credentials are not configured' },
+        { status: 500 },
+      )
+    }
 
     // Verify session belongs to user or is anonymous
     const { data: session, error: sessionError } = await serviceClient

@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createServiceClient } from "@/lib/supabase/service";
 import {
   checkRateLimit,
   clientRateKey,
@@ -19,10 +19,11 @@ const ALLOWED_MIME: Record<string, string> = {
 };
 
 function storageConfig() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) return null;
-  return { url: url.replace(/\/$/, ""), serviceKey };
+  try {
+    return createServiceClient();
+  } catch {
+    return null;
+  }
 }
 
 function sanitizeAnonymousId(value: string): string {
@@ -31,8 +32,8 @@ function sanitizeAnonymousId(value: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  const cfg = storageConfig();
-  if (!cfg) {
+  const supabase = storageConfig();
+  if (!supabase) {
     return NextResponse.json(
       { error: "Photo storage is not configured." },
       { status: 503 },
@@ -87,10 +88,6 @@ export async function POST(request: NextRequest) {
       { status: 413 },
     );
   }
-
-  const supabase = createClient(cfg.url, cfg.serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
 
   const objectPath = `${anonymousId}/${crypto.randomUUID()}.${ext}`;
   const bytes = new Uint8Array(await file.arrayBuffer());

@@ -42,7 +42,7 @@ export function serializeAgentMessages(messages: AgentMessage[]): Record<string,
   });
 }
 
-const DEFAULT_MODEL = "meta/llama-3.3-70b-instruct";
+const DEFAULT_MODEL = "meta/llama-3.1-70b-instruct";
 const DEFAULT_MAX_TOKENS = 2048;
 
 export function getDefaultLlmTimeoutMs(): number {

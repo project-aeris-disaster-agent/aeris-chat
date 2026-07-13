@@ -4,6 +4,7 @@ import { memo } from 'react'
 import { Message } from '@/types/user'
 import { MessageItem } from './MessageItem'
 import { IncidentDraftCard, type IncidentDraftCardStatus } from './IncidentDraftCard'
+import { ThinkingIndicator } from './ThinkingIndicator'
 import type { DraftIncidentReport } from '@/lib/incidents/intent'
 
 export type DraftEntry = {
@@ -76,12 +77,7 @@ function MessageListComponent({
           </div>
         )
       })}
-      {isLoading && (
-        <div className="flex items-center gap-2 text-text-secondary">
-          <div className="animate-spin rounded-full h-4 w-4 border-2 border-secondary border-t-transparent"></div>
-          <span>AI is thinking...</span>
-        </div>
-      )}
+      {isLoading && <ThinkingIndicator />}
     </div>
   )
 }

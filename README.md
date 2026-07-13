@@ -22,7 +22,14 @@ npm run dev
 
 ## Project Structure
 
-See `spec.md` for complete specifications and architecture details.
+See `spec.md` for historical specifications. For current capabilities see
+[`docs/CAPABILITY_REVIEW_2026-07-06.md`](docs/CAPABILITY_REVIEW_2026-07-06.md).
+
+## Identity model
+
+- **Anonymous chat (default):** Signed cookie + `anonymous_id` on sessions. No login required for SOS and weather chat (`NEXT_PUBLIC_AUTH_DISABLED` defaults to `true`).
+- **Privy (optional):** Profile, XP, and report ownership when users sign in via Privy (shared app id with the dashboard).
+- **Supabase email auth:** Available when `NEXT_PUBLIC_AUTH_DISABLED=false`; login/signup routes remain for that mode.
 
 ## Tech Stack
 

@@ -122,7 +122,6 @@ export function Chatbot() {
   const fadeOutTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const [messageInput, setMessageInput] = React.useState("");
   const [currentSessionId, setCurrentSessionId] = React.useState<string | null>(null);
-  const [isSending, setIsSending] = React.useState(false);
   const [pendingPhotoFile, setPendingPhotoFile] = React.useState<File | null>(null);
   const photoInputRef = React.useRef<HTMLInputElement>(null);
   // Guided incident-detection flow (popup) state.
@@ -145,7 +144,7 @@ export function Chatbot() {
 
   // Chat hooks
   const { sessions, createSession, isLoading: sessionsLoading } = useSessions();
-  const { messages, sendMessage, isLoading: messagesLoading } = useChat(currentSessionId);
+  const { messages, sendMessage, isLoading: messagesLoading, isSending } = useChat(currentSessionId);
   const { metadataLine, locationLine, isDetecting, hasAccurateLocation, detectedLocation, redetect } = useBannerLocation();
 
   const didInitialScrollRef = React.useRef(false);
@@ -400,7 +399,6 @@ export function Chatbot() {
 
     const messageToSend = messageInput.trim();
     setMessageInput("");
-    setIsSending(true);
 
     try {
       let sessionId = currentSessionId;
@@ -452,8 +450,6 @@ export function Chatbot() {
         message,
         detail: rawMessage,
       });
-    } finally {
-      setIsSending(false);
     }
   };
 
@@ -812,7 +808,7 @@ export function Chatbot() {
               <div id="chat" className="w-full">
                 <div className="pt-2 md:pt-2 lg:pt-3 pb-4 md:pb-6 lg:pb-8">
                   <div className="space-y-2 md:space-y-3 overflow-hidden">
-                    {messages.length > 0 ? (
+                    {(messages.length > 0 || isSending) ? (
                       <MessageList
                         messages={messages}
                         isLoading={isSending}

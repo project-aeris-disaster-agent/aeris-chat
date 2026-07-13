@@ -61,28 +61,29 @@ export async function POST(request: NextRequest) {
 
       if (sharedSupabaseReportsEnabled()) {
         const existing = await getSharedSupabaseReportById(reportId);
-        if (existing) {
-          const stored = await buildStoredOtp(code, phoneNumber);
-          const ok = await patchSharedReportMetadata(reportId, {
-            otp: stored,
-            phone_verification_status: "otp_requested",
-          });
-          if (!ok) {
-            return NextResponse.json(
-              { error: "Unable to start verification for this report." },
-              { status: 502 },
-            );
-          }
-          // TODO: dispatch `code` over SMS. Never return it except in dev/test.
-          return NextResponse.json({
-            ok: true,
-            message: "Verification code sent.",
-            ...(shouldExposeDevOtp() ? { devOtpCode: code } : {}),
-          });
+        if (!existing) {
+          return NextResponse.json({ error: "Report not found" }, { status: 404 });
         }
+
+        const stored = await buildStoredOtp(code, phoneNumber);
+        const ok = await patchSharedReportMetadata(reportId, {
+          otp: stored,
+          phone_verification_status: "otp_requested",
+        });
+        if (!ok) {
+          return NextResponse.json(
+            { error: "Unable to start verification for this report." },
+            { status: 502 },
+          );
+        }
+        return NextResponse.json({
+          ok: true,
+          message: "Verification code sent.",
+          ...(shouldExposeDevOtp() ? { devOtpCode: code } : {}),
+        });
       }
 
-      // Store only a salted hash for the local file-store path — never plaintext.
+      // Dev-only local file store when Supabase service creds are absent.
       const codeHash = await hashOtpCode(code, phoneNumber);
       const report = await updateReport(reportId, anonymousId, (current) => ({
         ...current,
@@ -118,37 +119,39 @@ export async function POST(request: NextRequest) {
 
       if (sharedSupabaseReportsEnabled()) {
         const shared = await getSharedSupabaseReportById(reportId);
-        if (shared) {
-          const stored = await getSharedReportOtp(reportId);
-          const check = await verifyStoredOtp(
-            stored,
-            otpCode,
-            phoneNumber || stored?.phoneNumber || "",
-          );
-          if (!check.ok) {
-            // Count the failed attempt so brute force eventually locks out.
-            if (stored) {
-              await patchSharedReportMetadata(reportId, {
-                otp: { ...stored, attempts: (stored.attempts ?? 0) + 1 },
-              });
-            }
-            return NextResponse.json(
-              { error: "Invalid or expired verification code." },
-              { status: 400 },
-            );
-          }
-
-          const updated = await patchSharedReportPhoneVerified(
-            reportId,
-            stored?.phoneNumber || phoneNumber,
-          );
-          if (!updated) {
-            return NextResponse.json({ error: "Unable to verify shared report." }, { status: 502 });
-          }
-          return NextResponse.json({ ok: true, report: updated });
+        if (!shared) {
+          return NextResponse.json({ error: "Report not found" }, { status: 404 });
         }
+
+        const stored = await getSharedReportOtp(reportId);
+        const check = await verifyStoredOtp(
+          stored,
+          otpCode,
+          phoneNumber || stored?.phoneNumber || "",
+        );
+        if (!check.ok) {
+          if (stored) {
+            await patchSharedReportMetadata(reportId, {
+              otp: { ...stored, attempts: (stored.attempts ?? 0) + 1 },
+            });
+          }
+          return NextResponse.json(
+            { error: "Invalid or expired verification code." },
+            { status: 400 },
+          );
+        }
+
+        const updated = await patchSharedReportPhoneVerified(
+          reportId,
+          stored?.phoneNumber || phoneNumber,
+        );
+        if (!updated) {
+          return NextResponse.json({ error: "Unable to verify shared report." }, { status: 502 });
+        }
+        return NextResponse.json({ ok: true, report: updated });
       }
 
+      // Dev-only local file store when Supabase service creds are absent.
       const current = await updateReport(reportId, anonymousId, (c) => c);
       if (!current) {
         return NextResponse.json({ error: "Report not found" }, { status: 404 });

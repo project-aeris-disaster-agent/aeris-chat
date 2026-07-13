@@ -70,3 +70,27 @@ export function detectPlaceMention(rawMessage: string): PlaceMention | null {
   }
   return null;
 }
+
+/** Same window as weather follow-up inheritance in lib/weather/intent.ts */
+const FOLLOW_UP_MAX_CHARS = 80;
+const FOLLOW_UP_LOOKBACK = 3;
+
+/**
+ * Like detectPlaceMention, but short follow-ups ("yes", "and tomorrow?")
+ * inherit the place named in a recent user turn.
+ */
+export function detectPlaceMentionWithHistory(
+  rawMessage: string,
+  priorUserMessages: string[],
+): PlaceMention | null {
+  const direct = detectPlaceMention(rawMessage);
+  if (direct) return direct;
+  if (rawMessage.trim().length > FOLLOW_UP_MAX_CHARS) return null;
+
+  const recent = priorUserMessages.slice(-FOLLOW_UP_LOOKBACK);
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const prior = detectPlaceMention(recent[i]);
+    if (prior) return prior;
+  }
+  return null;
+}

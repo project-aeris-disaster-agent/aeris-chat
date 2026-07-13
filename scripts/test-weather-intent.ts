@@ -7,7 +7,7 @@
 
 import { detectIncidentIntent } from "../lib/incidents/intent";
 import { detectWeatherIntent, detectWeatherIntentWithHistory } from "../lib/weather/intent";
-import { detectPlaceMention } from "../lib/weather/place-mention";
+import { detectPlaceMention, detectPlaceMentionWithHistory } from "../lib/weather/place-mention";
 
 type Case = {
   name: string;
@@ -116,10 +116,27 @@ const cebuCity = detectPlaceMention("typhoon signal sa Cebu City?");
 check("longest alias wins for Cebu City", cebuCity?.name === "Cebu City");
 const qc = detectPlaceMention("baha ba sa QC?");
 check("detects QC alias", qc?.name === "Quezon City", JSON.stringify(qc));
+check("detects Naga by name", detectPlaceMention("will it rain in naga tomorrow?")?.name === "Naga");
 check("no false place on plain question", detectPlaceMention("will it rain today?") === null);
 check(
   "no substring false positive (Cebuano)",
   detectPlaceMention("can you speak Cebuano?") === null,
+);
+
+console.log("\n[ detectPlaceMentionWithHistory ]");
+const nagaHistory = ["will it rain in naga tomorrow?"];
+const yesPlace = detectPlaceMentionWithHistory("yes", nagaHistory);
+check("short yes inherits Naga", yesPlace?.name === "Naga", JSON.stringify(yesPlace));
+check(
+  "long topic change does not inherit place",
+  detectPlaceMentionWithHistory(
+    "anyway can you help me write a long essay about something unrelated to weather please?",
+    nagaHistory,
+  ) === null,
+);
+check(
+  "follow-up without place history stays null",
+  detectPlaceMentionWithHistory("yes", ["hello aeris"]) === null,
 );
 
 console.log("\n[ incident vs weather separation ]");

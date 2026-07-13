@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { AUTH_DISABLED } from '@/lib/config'
 import { getClientIP } from '@/lib/utils/anonymous-session'
 import { resolveAnonId } from '@/lib/security/anon-identity'
@@ -36,18 +37,15 @@ export async function POST(request: NextRequest) {
 
     const ipAddress = getClientIP(request)
 
-    // Use service role client for inserts
-    const { createClient: createServiceClient } = await import('@supabase/supabase-js')
-    const serviceClient = createServiceClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    )
+    let serviceClient
+    try {
+      serviceClient = createServiceClient()
+    } catch {
+      return NextResponse.json(
+        { error: 'Supabase service credentials are not configured' },
+        { status: 500 },
+      )
+    }
 
     const { data, error } = await serviceClient
       .from('chat_sessions')
@@ -100,18 +98,15 @@ export async function GET(request: NextRequest) {
       sessionAnonymousId = await resolveAnonId(anonymousId)
     }
 
-    // Use service role client for queries
-    const { createClient: createServiceClient } = await import('@supabase/supabase-js')
-    const serviceClient = createServiceClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    )
+    let serviceClient
+    try {
+      serviceClient = createServiceClient()
+    } catch {
+      return NextResponse.json(
+        { error: 'Supabase service credentials are not configured' },
+        { status: 500 },
+      )
+    }
 
     let query = serviceClient.from('chat_sessions').select('*')
 

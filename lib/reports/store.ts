@@ -1,6 +1,8 @@
 import { promises as fs } from "fs";
 import path from "path";
 
+/** Dev-only report backend when Supabase service credentials are not configured. */
+
 export type DisasterReport = {
   id: string;
   messageId: string;

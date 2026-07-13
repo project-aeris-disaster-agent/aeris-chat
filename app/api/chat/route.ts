@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { AUTH_DISABLED } from '@/lib/config'
 import { runAgentLoop } from '@/lib/chat/agent-loop'
 import {
@@ -18,7 +19,7 @@ import {
 import { getCitizenSystemPrompt } from '@/lib/character/aeris-character'
 import { getClientIP } from '@/lib/utils/anonymous-session'
 import { detectWeatherIntentWithHistory } from '@/lib/weather/intent'
-import { detectPlaceMention } from '@/lib/weather/place-mention'
+import { detectPlaceMentionWithHistory } from '@/lib/weather/place-mention'
 import { detectIncidentIntent } from '@/lib/incidents/intent'
 import { detectEmergencyInfoIntent } from '@/lib/emergency/intent'
 import {
@@ -118,17 +119,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { createClient: createServiceClient } = await import('@supabase/supabase-js')
-    const serviceClient = createServiceClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    )
+    let serviceClient
+    try {
+      serviceClient = createServiceClient()
+    } catch {
+      return NextResponse.json(
+        { error: 'Supabase service credentials are not configured' },
+        { status: 500 },
+      )
+    }
 
     const { data: session, error: sessionError } = await serviceClient
       .from('chat_sessions')
@@ -276,7 +275,11 @@ export async function POST(request: NextRequest) {
 
       // If the user named a known PH city ("will it rain in Cebu?"), fetch
       // the forecast for that place instead of their own coordinates.
-      const placeMention = detectPlaceMention(latestUserMessage)
+      // Short follow-ups ("yes") inherit the place from a recent turn.
+      const placeMention = detectPlaceMentionWithHistory(
+        latestUserMessage,
+        priorUserMessages,
+      )
       const placeOverride: ForecastPlaceOverride | null = placeMention
         ? {
             label: `${placeMention.name}, ${placeMention.region}`,

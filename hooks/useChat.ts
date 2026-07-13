@@ -1,6 +1,5 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { Message } from '@/types/user'
@@ -89,29 +88,10 @@ export function useChat(sessionId: string | null) {
       sessionId: string
       location?: ChatLocationPayload
     }) => {
-      // Get anonymous session ID if needed
       const anonymousId = getAnonymousSessionId()
 
-      if (!AUTH_DISABLED) {
-        const { data: { user } } = await supabase.auth.getUser()
-
-        if (user) {
-          // Authenticated: insert user message directly
-          const { error: userError } = await supabase
-            .from('messages')
-            .insert({
-              session_id: sid,
-              role: 'user',
-              content,
-            })
-            .select()
-            .single()
-
-          if (userError) throw userError
-        }
-      }
-
       // Call API to get AI response. Only the most recent turns are sent.
+      // Message persistence is server-only via /api/chat (persistUserAndAssistant).
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -136,25 +116,6 @@ export function useChat(sessionId: string | null) {
       }
 
       const { message: aiMessage } = await response.json()
-
-      // Insert AI response only if authenticated (API route handles it for anonymous)
-      if (!AUTH_DISABLED) {
-        const { data: { user } } = await supabase.auth.getUser()
-
-        if (user) {
-          const { error: assistantError } = await supabase
-            .from('messages')
-            .insert({
-              session_id: sid,
-              role: 'assistant',
-              content: aiMessage,
-            })
-            .select()
-            .single()
-
-          if (assistantError) throw assistantError
-        }
-      }
 
       return { aiMessage: typeof aiMessage === 'string' ? aiMessage : '' }
     },
