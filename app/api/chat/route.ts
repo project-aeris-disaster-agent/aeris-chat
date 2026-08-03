@@ -7,6 +7,7 @@ import { AUTH_DISABLED } from '@/lib/config'
 import { runAgentLoop } from '@/lib/chat/agent-loop'
 import {
   formatLocationContextBlock,
+  makePhDefaultLocation,
   parseChatLocationPayload,
   resolveChatLocation,
 } from '@/lib/chat/location-payload'
@@ -267,8 +268,19 @@ export async function POST(request: NextRequest) {
       contextBlocks.push(formatLocationContextBlock(resolvedLocation))
     }
 
+    // Typhoon/PAR status is a national-scope question — GDACS returns the
+    // same cyclone list regardless of the asker's exact position. Fall back
+    // to a synthetic PH-wide location instead of requiring a location fix, so
+    // "is there a storm in PAR?" still gets the fast, reliable prefetch path
+    // (one LLM call) instead of the slower/flakier tool-loop fallback below.
+    // Forecast/"both" intents still require a real location: rainfall is
+    // location-specific and answering from a wrong default would mislead.
+    const weatherContextLocation =
+      resolvedLocation ??
+      (weatherIntent.kind === 'typhoon' ? makePhDefaultLocation() : null)
+
     let hasUsableWeatherData = false
-    if (weatherIntent.match && weatherIntent.kind && resolvedLocation) {
+    if (weatherIntent.match && weatherIntent.kind && weatherContextLocation) {
       // Widen the forecast window when the user asks about "this week".
       const wantsWeek = /\b(week|linggo|days)\b/i.test(latestUserMessage)
       const days = wantsWeek ? 7 : undefined
@@ -289,7 +301,7 @@ export async function POST(request: NextRequest) {
         : null
 
       const liveContext = await buildWeatherLiveContext(
-        resolvedLocation,
+        weatherContextLocation,
         weatherIntent.kind,
         days,
         placeOverride,

@@ -69,7 +69,9 @@ const WEATHER_GUIDANCE = `WEATHER & TYPHOON GUIDANCE
 - LIVE_CONTEXT.forecastLocation says where the forecast data applies. When it differs from the user's own location (isUserLocation: false), answer for that asked place and name it explicitly (e.g. "In **Cebu City**...").
 - If live data is unavailable in LIVE_CONTEXT, say you could not fetch it and do not guess.
 - Keep a warm, conversational citizen tone — not the dashboard Situation Brief format.
-- If USER_LOCATION source is "ip" or accuracyM is large (>5000), briefly note the location is approximate.`;
+- If USER_LOCATION source is "ip" or accuracyM is large (>5000), briefly note the location is approximate.
+- "PAR" means the Philippine Area of Responsibility — the whole ocean/land area PAGASA monitors for cyclones, not a specific place. A question like "is there a storm in PAR?" is asking about the country as a whole: answer it from LIVE_CONTEXT.cyclones directly (or call get_active_typhoons if no LIVE_CONTEXT is present). Never treat "PAR" as a city/place name to geocode.
+- If LIVE_CONTEXT.userLocationIsReal is false, USER_LOCATION is a generic Philippines-wide placeholder, not the user's real position. Do NOT say a storm is "X km from you" or "affects your location" — instead describe the national PAR situation and which cities are near the track (LIVE_CONTEXT.typhoonImpact.allNearbyCities), and invite the user to tap "Autodetect location" or name their city for a personalized check.`;
 
 function bullets(items: string[] | undefined): string {
   if (!items || items.length === 0) return "";

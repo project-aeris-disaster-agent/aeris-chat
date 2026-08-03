@@ -36,7 +36,7 @@ export const GET_ACTIVE_TYPHOONS_TOOL: NvidiaToolDef = {
   function: {
     name: "get_active_typhoons",
     description:
-      "Fetch active tropical cyclones from GDACS and assess proximity to the user's location and major Philippine cities.",
+      "Fetch active tropical cyclones from GDACS and assess proximity to the user's location and major Philippine cities. This is the right tool for general/national questions like 'is there a storm in PAR?' or 'any active typhoon?' — it needs no arguments and no place name. Call it once; a second call in the same turn returns the same cached data.",
     parameters: {
       type: "object",
       properties: {},
@@ -50,13 +50,13 @@ export const LOOKUP_TYPHOON_SIGNAL_TOOL: NvidiaToolDef = {
   function: {
     name: "lookup_typhoon_signal",
     description:
-      "Look up the current PAGASA tropical cyclone wind signal for a Philippine area (province/city). Requires AERIS Dashboard when configured.",
+      "Look up the current PAGASA tropical cyclone wind signal for ONE specific named Philippine province or city (e.g. 'is Marikina under signal no. 2?'). Requires AERIS Dashboard when configured. Do NOT call this for general/national questions ('is there a storm in PAR?', 'any typhoon right now?') — use get_active_typhoons for those instead. 'PAR' (Philippine Area of Responsibility) is not a valid area name here.",
     parameters: {
       type: "object",
       properties: {
         area: {
           type: "string",
-          description: "Area name (e.g. 'Marikina', 'Cebu province').",
+          description: "A specific area name, e.g. 'Marikina' or 'Cebu province'. Never 'PAR' or 'Philippines'.",
         },
       },
       required: ["area"],
@@ -70,13 +70,13 @@ export const GEOCODE_PLACE_TOOL: NvidiaToolDef = {
   function: {
     name: "geocode_place",
     description:
-      "Resolve a place name (city, town, province) to latitude/longitude. Use when the user asks about weather in a named place and you don't have its coordinates; then call get_weather_forecast with the result.",
+      "Resolve a specific city/town/province name to latitude/longitude, so you can then call get_weather_forecast for that place. Only use this for a real, specific place the user named. 'PAR' (Philippine Area of Responsibility) is NOT a place to geocode — it refers to the whole country's cyclone-monitoring area; use get_active_typhoons instead.",
     parameters: {
       type: "object",
       properties: {
         name: {
           type: "string",
-          description: "Place name, e.g. 'Cebu City' or 'Bulacan'.",
+          description: "A specific place name, e.g. 'Cebu City' or 'Bulacan'. Never 'PAR' or 'Philippines'.",
         },
       },
       required: ["name"],
@@ -163,6 +163,9 @@ export async function runWeatherTool(
   args: Record<string, unknown>,
   context: WeatherToolContext,
 ): Promise<unknown> {
+  // Lightweight visibility into which tools the model reaches for — the only
+  // way to diagnose "why did it fail/take long" reports from production logs.
+  console.log(`[weather-tool] ${name}`, args);
   switch (name) {
     case "get_weather_forecast": {
       const lat = Number(args.lat);

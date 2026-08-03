@@ -3,9 +3,30 @@ import type { DetectedLocation } from "@/lib/location/detect-location";
 export type ChatLocationPayload = {
   position: [number, number];
   label: string;
-  source: "browser" | "ip";
+  /** "default" is a synthetic PH-wide fallback used only for national-scope
+   * questions (e.g. typhoon/PAR status) when the user's real location is
+   * unknown. Never treat it as the user's actual position. */
+  source: "browser" | "ip" | "default";
   accuracyM?: number;
 };
+
+/** Manila coordinates, used only as a neutral anchor for national-scope
+ * (non-personalized) typhoon questions when no real user location is known. */
+const PH_DEFAULT_POSITION: [number, number] = [120.9842, 14.5995];
+
+/**
+ * A synthetic, non-personal location for national-scope questions (e.g. "is
+ * there a storm in PAR?") that don't require knowing the user's exact spot.
+ * `source: "default"` tells the model this is not the user's real location,
+ * so it must not make personal proximity/distance claims from it.
+ */
+export function makePhDefaultLocation(): ChatLocationPayload {
+  return {
+    position: PH_DEFAULT_POSITION,
+    label: "Philippines (unspecified location)",
+    source: "default",
+  };
+}
 
 export function toChatLocationPayload(
   location: DetectedLocation | null,

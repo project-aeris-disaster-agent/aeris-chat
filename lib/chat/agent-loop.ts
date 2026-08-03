@@ -94,6 +94,11 @@ export async function runAgentLoop(
   const messages: AgentMessage[] = [...initialMessages];
   const maxSteps = options.maxSteps ?? getWeatherToolLoopMaxSteps();
   const knownToolNames = new Set(options.tools.map((tool) => tool.function.name));
+  // Some models re-call a tool they already used this turn (observed with
+  // get_active_typhoons, which takes no args and never needs a second call).
+  // Cache by name+args so a repeat resolves instantly from memory instead of
+  // spending a full network round trip out of the tight step/time budget.
+  const toolResultCache = new Map<string, Promise<unknown>>();
 
   for (let step = 0; step < maxSteps; step += 1) {
     const result = await callNvidiaWithTools(messages, {
@@ -129,7 +134,13 @@ export async function runAgentLoop(
 
     for (const toolCall of toolCalls) {
       const args = safeParseToolArgs(toolCall.function.arguments);
-      const toolResult = await options.runTool(toolCall.function.name, args);
+      const cacheKey = `${toolCall.function.name}:${JSON.stringify(args)}`;
+      let resultPromise = toolResultCache.get(cacheKey);
+      if (!resultPromise) {
+        resultPromise = options.runTool(toolCall.function.name, args);
+        toolResultCache.set(cacheKey, resultPromise);
+      }
+      const toolResult = await resultPromise;
       messages.push({
         role: "tool",
         tool_call_id: toolCall.id,

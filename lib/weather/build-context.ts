@@ -20,9 +20,15 @@ export type WeatherLiveContext = {
     label: string;
     lat: number;
     lng: number;
-    source: "browser" | "ip";
+    source: "browser" | "ip" | "default";
     accuracyM: number | null;
   };
+  /**
+   * False when userLocation is the synthetic PH-wide fallback (source
+   * "default") rather than a real browser/IP fix. The model must not make
+   * personal proximity/distance claims from a non-real location.
+   */
+  userLocationIsReal: boolean;
   /**
    * Where the forecast/typhoon-impact data below applies. Matches
    * userLocation unless the user asked about a different place by name.
@@ -74,6 +80,7 @@ export async function buildWeatherLiveContext(
       source: location.source,
       accuracyM: location.accuracyM ?? null,
     },
+    userLocationIsReal: location.source !== "default",
     forecastLocation: {
       label: placeOverride?.label ?? location.label,
       lat: targetLat,
