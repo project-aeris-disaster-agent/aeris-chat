@@ -42,7 +42,19 @@ export function serializeAgentMessages(messages: AgentMessage[]): Record<string,
   });
 }
 
-const DEFAULT_MODEL = "meta/llama-3.1-70b-instruct";
+/**
+ * Chosen for latency: the 70B swung between 3.9s and 31.6s on identical
+ * payloads and produced a ~8-15% timeout rate in production probes, which on a
+ * disaster line is worse than a smaller model. The 8B answers in ~1-4s.
+ *
+ * Safety eval before switching (4 runs/scenario, see docs/CAPABILITY_AUDIT):
+ * SOS Tagalog 4/4, SOS English 4/4, grounded-figures 4/4, no-false-all-clear
+ * 4/4 — the life-safety paths hold. Known trade-off: with the injection
+ * reinforcement active it still leaked the system prompt in ~1/15 jailbreak
+ * attempts, and it is likelier to accept out-of-scope tasks. That is a
+ * confidentiality/scope cost, not a safety-instruction cost.
+ */
+const DEFAULT_MODEL = "meta/llama-3.1-8b-instruct";
 const DEFAULT_MAX_TOKENS = 2048;
 
 /**
