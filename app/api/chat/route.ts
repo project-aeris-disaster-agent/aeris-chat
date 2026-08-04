@@ -50,6 +50,7 @@ import { resolveAnonId } from '@/lib/security/anon-identity'
 import { checkChatRateLimit, rateLimitHeaders } from '@/lib/guardrails/rate-limit'
 import { validateChatMessages } from '@/lib/guardrails/validate'
 import { scanForInjection, INJECTION_REINFORCEMENT } from '@/lib/guardrails/injection'
+import { sanitizeSignalClaims, stripInternalIdentifiers } from '@/lib/guardrails/signal-claims'
 import {
   moderateInput,
   moderateOutput,
@@ -460,6 +461,28 @@ export async function POST(request: NextRequest) {
       }
 
       clearTimeout(timeoutId)
+
+      // SAFETY: we have no per-area TCWS feed, so any wind-signal level the
+      // model attributes to the user's own location is fabricated. Rewrite it
+      // before the user can act on it. Also scrub internal context identifiers
+      // that occasionally leak into the reply.
+      const signalCheck = sanitizeSignalClaims(
+        aiMessage,
+        contextBlocks,
+        resolvedLocation?.label ?? null,
+      )
+      if (signalCheck.modified) {
+        console.warn(
+          `[guardrails] ungrounded signal claim rewritten for session ${sessionId}:`,
+          signalCheck.removed,
+        )
+        aiMessage = signalCheck.text
+      }
+      const identifierCheck = stripInternalIdentifiers(aiMessage)
+      if (identifierCheck.modified) {
+        console.warn(`[guardrails] internal identifier leaked for session ${sessionId}`)
+        aiMessage = identifierCheck.text
+      }
 
       // Moderate model output before returning it to the user.
       const outputVerdict = await moderateOutput(aiMessage)

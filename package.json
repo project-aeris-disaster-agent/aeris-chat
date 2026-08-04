@@ -14,6 +14,7 @@
     "smoke:intent": "npx tsx scripts/test-incident-intent.ts",
     "smoke:weather-intent": "npx tsx scripts/test-weather-intent.ts",
     "smoke:hazard-intent": "npx tsx scripts/test-hazard-intent.ts",
+    "smoke:signal-claims": "npx tsx scripts/test-signal-claims.ts",
     "smoke:emergency": "npx tsx scripts/test-emergency.ts"
   },
   "dependencies": {
