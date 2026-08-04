@@ -90,6 +90,44 @@ const rGrounded = sanitizeSignalClaims(
 );
 check("allows a claim the context actually supports", !rGrounded.modified, rGrounded.text);
 
+console.log("\n[ grounding requires PROXIMITY, not co-occurrence ]");
+// Regression: LIVE_CONTEXT always carries the user's location label, so a naive
+// "location appears AND signal appears" check was true on nearly every turn and
+// silently disabled the guard. Caught in production 2026-08-04.
+const REALISTIC_CTX = [
+  `LIVE_CONTEXT (JSON):\n${JSON.stringify({
+    forecastLocation: { label: "Marikina City", isUserLocation: true },
+    forecast: { available: true, daily: [{ date: "2026-08-05", precipitationSumMm: 17.9 }] },
+  })}`,
+  `HAZARD_NEWS (JSON):\n${JSON.stringify({
+    items: [{ title: "Signal No. 2 raised over 6 Luzon areas as Maymay intensifies —Pagasa", source: "Manila Times" }],
+  })}`,
+];
+const tlNegative =
+  "Sa kasalukuyan, walang signal number na inilabas ng PAGASA para sa Marikina City.";
+const rProx = sanitizeSignalClaims(tlNegative, REALISTIC_CTX, "Marikina City");
+check(
+  "location in LIVE_CONTEXT does NOT ground a signal claim",
+  rProx.modified,
+  rProx.text,
+);
+const enPositive = "You are in Marikina City, which is currently under Signal No. 2.";
+check(
+  "same for a positive claim with realistic context",
+  sanitizeSignalClaims(enPositive, REALISTIC_CTX, "Marikina City").modified,
+);
+// But a headline that genuinely names the city must still pass through.
+const NAMED_CTX = [
+  `LIVE_CONTEXT (JSON):\n${JSON.stringify({ forecastLocation: { label: "Marikina City" } })}`,
+  `HAZARD_NEWS (JSON):\n${JSON.stringify({
+    items: [{ title: "Signal No. 2 up over Marikina City and Quezon City —Pagasa" }],
+  })}`,
+];
+check(
+  "headline naming the city still grounds the claim",
+  !sanitizeSignalClaims(enPositive, NAMED_CTX, "Marikina City").modified,
+);
+
 console.log("\n[ internal identifier scrub ]");
 const leak = "According to LIVE_CONTEXT.cyclones, one tropical depression is in PAR.";
 const rLeak = stripInternalIdentifiers(leak);
