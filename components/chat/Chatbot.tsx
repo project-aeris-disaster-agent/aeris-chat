@@ -5,7 +5,7 @@ import Image from "next/image";
 
 import { CanvasRevealEffect } from "@/components/ui/canvas-effect";
 
-import { AlertCircle, Camera, Loader2, LocateFixed, MessageCircle, Send, X } from "lucide-react";
+import { AlertCircle, Camera, Loader2, LocateFixed, MessageCircle, RefreshCw, Send, X } from "lucide-react";
 
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -112,7 +112,12 @@ export function Chatbot() {
     glow: 0.0,
   };
 
-  const [errorPopup, setErrorPopup] = React.useState<{ message: string; detail?: string } | null>(null);
+  const [errorPopup, setErrorPopup] = React.useState<{
+    message: string;
+    detail?: string;
+    /** The text the user tried to send, so they can retry without retyping. */
+    retry?: string;
+  } | null>(null);
   const [animationOpacity, setAnimationOpacity] = React.useState(1); // Control fade-out
 
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -399,6 +404,16 @@ export function Chatbot() {
 
     const messageToSend = messageInput.trim();
     setMessageInput("");
+    await submitMessage(messageToSend);
+  };
+
+  /**
+   * Shared send path for the composer and the error popup's Retry button, so a
+   * failed message can be re-sent without the user retyping it.
+   */
+  const submitMessage = async (messageToSend: string) => {
+    if (!messageToSend || isSending || messagesLoading) return;
+    setErrorPopup(null);
 
     try {
       let sessionId = currentSessionId;
@@ -438,17 +453,26 @@ export function Chatbot() {
         'unable to connect to backend service',
         'backend api is not configured',
         'request timeout',
+        // The server reports timeouts as "...timed out after 45000ms"; without
+        // this the most common failure fell through to the "maintenance" copy.
+        'timed out',
+        'took too long',
         'failed to fetch',
+        'networkerror',
+        'load failed',
         '503',
+        '504',
       ].some((fragment) => normalized.includes(fragment));
 
       const message = backendUnavailable
         ? 'Servers are busy, try again later #6656'
-        : 'A.E.R.I.S.is under maintenance, try again later #6657';
+        : 'A.E.R.I.S. is under maintenance, try again later #6657';
 
       setErrorPopup({
         message,
         detail: rawMessage,
+        // Let the user re-send without retyping (task 4).
+        retry: messageToSend,
       });
     }
   };
@@ -543,6 +567,10 @@ export function Chatbot() {
 
   React.useEffect(() => {
     if (!errorPopup) return;
+    // A retryable failure stays until the user acts on it. Auto-dismissing the
+    // only affordance for recovering a lost message meant a user who glanced
+    // away lost it silently — bad on a weak connection during a storm.
+    if (errorPopup.retry) return;
     const timer = window.setTimeout(() => setErrorPopup(null), 6000);
     return () => window.clearTimeout(timer);
   }, [errorPopup]);
@@ -584,6 +612,25 @@ export function Chatbot() {
                 <p className="text-sm font-semibold tracking-tight">
                   {errorPopup.message}
                 </p>
+                {errorPopup.retry && (
+                  <>
+                    <p className="mt-1 line-clamp-2 text-xs text-destructive-foreground/80">
+                      Your message wasn&apos;t sent: &ldquo;{errorPopup.retry}&rdquo;
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const text = errorPopup.retry;
+                        if (text) void submitMessage(text);
+                      }}
+                      disabled={isSending}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-destructive-foreground/15 px-2.5 py-1 text-xs font-semibold text-destructive-foreground transition hover:bg-destructive-foreground/25 disabled:opacity-50"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Try again
+                    </button>
+                  </>
+                )}
               </div>
               <button
                 type="button"

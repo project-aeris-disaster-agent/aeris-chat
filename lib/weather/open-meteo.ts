@@ -6,6 +6,13 @@ export type WeatherForecastDay = {
   precipitationSumMm: number | null;
   precipitationProbabilityMax: number | null;
   weatherCode: number | null;
+  /** Air temperature range in °C. */
+  temperatureMaxC: number | null;
+  temperatureMinC: number | null;
+  /** Feels-like peak in °C — the closest free proxy for PAGASA's heat index. */
+  apparentTemperatureMaxC: number | null;
+  windSpeedMaxKph: number | null;
+  windGustsMaxKph: number | null;
   summary: string;
 };
 
@@ -14,6 +21,9 @@ export type WeatherForecastHour = {
   precipitationMm: number | null;
   precipitationProbability: number | null;
   weatherCode: number | null;
+  temperatureC: number | null;
+  apparentTemperatureC: number | null;
+  windSpeedKph: number | null;
 };
 
 export type WeatherForecastResult = {
@@ -48,6 +58,22 @@ function floodRiskFromDaily(day: WeatherForecastDay): string {
   if (rain >= 25 || prob >= 60) return "moderate";
   if (rain >= 10 || prob >= 40) return "low";
   return "minimal";
+}
+
+/**
+ * Bucketed against PAGASA's published heat-index bands (caution 27-32,
+ * extreme caution 33-41, danger 42-51, extreme danger 52+). Open-Meteo's
+ * apparent temperature is not PAGASA's official heat index, so this is
+ * labelled as a feels-like estimate everywhere it surfaces.
+ */
+function heatRiskFromDaily(day: WeatherForecastDay): string | null {
+  const feels = day.apparentTemperatureMaxC;
+  if (feels === null || !Number.isFinite(feels)) return null;
+  if (feels >= 52) return "extreme-danger";
+  if (feels >= 42) return "danger";
+  if (feels >= 33) return "extreme-caution";
+  if (feels >= 27) return "caution";
+  return "normal";
 }
 
 function manilaLocalIsoMinutes(now: Date): string {
@@ -97,13 +123,19 @@ export async function fetchWeatherForecast(
     return { ...base, error: "Invalid coordinates" };
   }
 
+  // Temperature and wind ride along in the same request at no extra cost.
+  // Heat is a genuine killer in PH (PAGASA issues heat-index warnings) and
+  // wind speed is the most-asked typhoon number after the signal level.
   const params = new URLSearchParams({
     latitude: String(lat),
     longitude: String(lng),
-    hourly: "precipitation,precipitation_probability,weather_code",
-    daily: "precipitation_sum,precipitation_probability_max,weather_code",
+    hourly:
+      "precipitation,precipitation_probability,weather_code,temperature_2m,apparent_temperature,wind_speed_10m",
+    daily:
+      "precipitation_sum,precipitation_probability_max,weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,wind_speed_10m_max,wind_gusts_10m_max",
     forecast_days: String(days),
     timezone: "Asia/Manila",
+    wind_speed_unit: "kmh",
   });
 
   try {
@@ -122,12 +154,20 @@ export async function fetchWeatherForecast(
         precipitation_sum?: Array<number | null>;
         precipitation_probability_max?: Array<number | null>;
         weather_code?: Array<number | null>;
+        temperature_2m_max?: Array<number | null>;
+        temperature_2m_min?: Array<number | null>;
+        apparent_temperature_max?: Array<number | null>;
+        wind_speed_10m_max?: Array<number | null>;
+        wind_gusts_10m_max?: Array<number | null>;
       };
       hourly?: {
         time?: string[];
         precipitation?: Array<number | null>;
         precipitation_probability?: Array<number | null>;
         weather_code?: Array<number | null>;
+        temperature_2m?: Array<number | null>;
+        apparent_temperature?: Array<number | null>;
+        wind_speed_10m?: Array<number | null>;
       };
     };
 
@@ -143,6 +183,11 @@ export async function fetchWeatherForecast(
         precipitationSumMm,
         precipitationProbabilityMax,
         weatherCode,
+        temperatureMaxC: data.daily?.temperature_2m_max?.[index] ?? null,
+        temperatureMinC: data.daily?.temperature_2m_min?.[index] ?? null,
+        apparentTemperatureMaxC: data.daily?.apparent_temperature_max?.[index] ?? null,
+        windSpeedMaxKph: data.daily?.wind_speed_10m_max?.[index] ?? null,
+        windGustsMaxKph: data.daily?.wind_gusts_10m_max?.[index] ?? null,
         summary,
       };
     });
@@ -158,6 +203,9 @@ export async function fetchWeatherForecast(
           precipitationMm: data.hourly?.precipitation?.[index] ?? null,
           precipitationProbability: data.hourly?.precipitation_probability?.[index] ?? null,
           weatherCode: data.hourly?.weather_code?.[index] ?? null,
+          temperatureC: data.hourly?.temperature_2m?.[index] ?? null,
+          apparentTemperatureC: data.hourly?.apparent_temperature?.[index] ?? null,
+          windSpeedKph: data.hourly?.wind_speed_10m?.[index] ?? null,
         };
       });
 
@@ -167,10 +215,15 @@ export async function fetchWeatherForecast(
       lng,
       timezone: data.timezone ?? "Asia/Manila",
       generatedAt: new Date().toISOString(),
-      daily: daily.map((day) => ({
-        ...day,
-        summary: `${day.summary}; flood-risk ${floodRiskFromDaily(day)}`,
-      })),
+      daily: daily.map((day) => {
+        const heat = heatRiskFromDaily(day);
+        return {
+          ...day,
+          summary:
+            `${day.summary}; flood-risk ${floodRiskFromDaily(day)}` +
+            (heat ? `; heat-risk ${heat} (feels-like estimate, not PAGASA heat index)` : ""),
+        };
+      }),
       hourlyNext24h,
       floodRiskNote: base.floodRiskNote,
     };

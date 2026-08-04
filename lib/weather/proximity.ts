@@ -13,6 +13,8 @@ export type NearbyCityImpact = {
 
 export type CycloneImpactAssessment = {
   cycloneName: string;
+  /** PAGASA local name when known — lead with this for Filipino users. */
+  cycloneLocalName: string | null;
   eventId: string;
   hitsUserLocation: boolean;
   nearestDistanceToUserKm: number | null;
@@ -71,6 +73,7 @@ export function assessTyphoonImpact(
 
     return {
       cycloneName: cyclone.name,
+      cycloneLocalName: cyclone.localName ?? null,
       eventId: cyclone.eventId,
       hitsUserLocation,
       nearestDistanceToUserKm:

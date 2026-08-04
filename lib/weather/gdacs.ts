@@ -1,5 +1,8 @@
+// MAP rather than SEARCH: SEARCH ignores the eventtype filter server-side and
+// truncates at 100 events (verified 2026-08-04), so an active PH storm can fall
+// off the end. MAP honours `eventtypes` and returns the full current set.
 const GDACS_EVENT_LIST_URL =
-  "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?eventtype=TC";
+  "https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP?eventtypes=TC";
 const FETCH_TIMEOUT_MS = 8000;
 const FORECAST_WINDOW_DAYS = 7;
 
@@ -11,7 +14,15 @@ export type CycloneTrackPoint = {
 
 export type ActiveCyclone = {
   eventId: string;
+  /** International name, e.g. "BAVI-26". */
   name: string;
+  /**
+   * PAGASA local name (e.g. "Ambo") when GDACS supplies `name_local`. Filipinos
+   * hear this name on the radio, so it must lead whenever present. Often null:
+   * GDACS only carries it for some PAR storms, and the authoritative source is
+   * PAGASA's own bulletins (see docs/CAPABILITY_AUDIT_2026-08-04.md §4).
+   */
+  localName: string | null;
   alertLevel: string;
   severity?: string;
   fromDate?: string;
@@ -119,9 +130,14 @@ function parseGdacsFeature(feature: unknown): ActiveCyclone | null {
   const inPhilippinesRegion =
     isInPhilippinesRegion(trackPoints) || affectsPhilippines(properties);
 
+  const localNameRaw = properties.name_local ?? properties.nameLocal;
+  const localName =
+    typeof localNameRaw === "string" && localNameRaw.trim() ? localNameRaw.trim() : null;
+
   return {
     eventId: eventId || name,
     name,
+    localName,
     alertLevel: String(properties.alertlevel ?? properties.alertLevel ?? "unknown"),
     severity:
       typeof properties.severitydata === "object" && properties.severitydata
@@ -134,6 +150,60 @@ function parseGdacsFeature(feature: unknown): ActiveCyclone | null {
     inPhilippinesRegion,
     isCurrent: String(properties.iscurrent ?? "").toLowerCase() === "true",
   };
+}
+
+/**
+ * GDACS returns ONE FEATURE PER EPISODE, not per storm — a single cyclone can
+ * appear 90+ times as it is re-forecast. Reporting those raw would tell the
+ * user there are 176 active typhoons when there are 2 (verified 2026-08-04).
+ *
+ * Each episode also carries that moment's position, so merging a storm's
+ * episodes reconstructs its track — which is what the proximity assessment
+ * needs. Metadata is taken from the newest episode; points are unioned.
+ */
+export function mergeCycloneEpisodes(episodes: ActiveCyclone[]): ActiveCyclone[] {
+  const byEvent = new Map<string, ActiveCyclone>();
+
+  for (const episode of episodes) {
+    const existing = byEvent.get(episode.eventId);
+    if (!existing) {
+      byEvent.set(episode.eventId, { ...episode, trackPoints: [...episode.trackPoints] });
+      continue;
+    }
+
+    const seen = new Set(existing.trackPoints.map((p) => `${p.lat},${p.lng}`));
+    for (const point of episode.trackPoints) {
+      const key = `${point.lat},${point.lng}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        existing.trackPoints.push(point);
+      }
+    }
+
+    // Prefer the newer episode's metadata; `toDate` advances as it is re-issued.
+    const isNewer = (episode.toDate ?? "") > (existing.toDate ?? "");
+    if (isNewer) {
+      existing.name = episode.name;
+      existing.alertLevel = episode.alertLevel;
+      existing.severity = episode.severity;
+      existing.toDate = episode.toDate;
+      existing.description = episode.description;
+    }
+    // Never lose a local name or a current flag to an older/blank episode.
+    existing.localName = existing.localName ?? episode.localName;
+    existing.isCurrent = existing.isCurrent || episode.isCurrent;
+    existing.inPhilippinesRegion =
+      existing.inPhilippinesRegion || episode.inPhilippinesRegion;
+  }
+
+  // Re-evaluate PH proximity against the fully merged track: a storm whose
+  // individual episodes each looked non-PH may still cross the box overall.
+  for (const cyclone of byEvent.values()) {
+    cyclone.inPhilippinesRegion =
+      cyclone.inPhilippinesRegion || isInPhilippinesRegion(cyclone.trackPoints);
+  }
+
+  return [...byEvent.values()];
 }
 
 export async function fetchActiveCyclones(): Promise<ActiveCyclonesResult> {
@@ -164,10 +234,9 @@ export async function fetchActiveCyclones(): Promise<ActiveCyclonesResult> {
         ? data.properties.eventlist
         : [];
 
-    const cyclones = features
-      .map(parseGdacsFeature)
-      .filter((c): c is ActiveCyclone => c !== null)
-      .sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent));
+    const cyclones = mergeCycloneEpisodes(
+      features.map(parseGdacsFeature).filter((c): c is ActiveCyclone => c !== null),
+    ).sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent));
 
     return {
       available: true,

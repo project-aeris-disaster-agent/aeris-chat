@@ -16,7 +16,12 @@ const OVERPASS_ENDPOINTS = [
   "https://overpass.kumi.systems/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
 ];
-const FETCH_TIMEOUT_MS = 9000;
+/**
+ * Per-endpoint ceiling. Because the mirrors are RACED rather than tried in
+ * series (see fetchFromOverpass), this is also the overall wall-clock ceiling
+ * for the whole lookup — no separate total budget is needed.
+ */
+const FETCH_TIMEOUT_MS = 12_000;
 const SEARCH_RADIUS_M = 10_000;
 const MAX_RESULTS = 8;
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -51,10 +56,18 @@ function buildQuery(lat: number, lng: number): string {
   // Server timeout must stay under FETCH_TIMEOUT_MS so a slow server returns
   // a parseable timeout remark (which we treat as failure) instead of us
   // aborting mid-response. Short timeouts also cost less server quota.
+  // The name clause MUST be anchored to an indexed key. A bare
+  // `nwr[name~"..."]` has no index to start from, so Overpass full-scans the
+  // radius: measured 2026-08-04 it timed out all three endpoints at 20s, which
+  // is why evacuation lookups were failing in production. Anchoring to
+  // `amenity` returns the same real centers in ~2.6s.
+  //
+  // Do NOT anchor to `building` instead — nearly every object carries it, so
+  // that variant is just as unindexed and times out too (verified).
   return `[out:json][timeout:8];(
     nwr["emergency"~"^evacuation_cent(re|er)$"](${around});
     nwr["social_facility"="shelter"]["shelter_type"="evacuation"](${around});
-    nwr[name~"[Ee]vacuation [Cc]ent"](${around});
+    nwr["amenity"]["name"~"[Ee]vacuation [Cc]ent"](${around});
   );out center qt ${MAX_RESULTS * 4};`;
 }
 
@@ -122,44 +135,54 @@ async function fetchFromOverpass(lat: number, lng: number): Promise<EvacCentersR
     advisory: ADVISORY,
   };
 
-  let lastError = "";
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-          // Overpass etiquette: identify the application.
-          "user-agent": "AERIS-Chat/1.0 (disaster-response assistant; Philippines)",
-        },
-        body: `data=${encodeURIComponent(buildQuery(lat, lng))}`,
-        cache: "no-store",
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
-      if (!res.ok) {
-        lastError = `Overpass HTTP ${res.status}`;
-        continue;
-      }
-      const data = (await res.json()) as { elements?: OverpassElement[]; remark?: string };
-      // Overpass reports runtime errors (e.g. query timeouts) as HTTP 200
-      // with a "remark". An errored, empty response must read as
-      // "unavailable" — NEVER as "there are no centers near you".
-      const remarkError = typeof data.remark === "string" && /error/i.test(data.remark);
-      const elements = data.elements ?? [];
-      if (remarkError && elements.length === 0) {
-        lastError = `Overpass remark: ${data.remark}`;
-        continue;
-      }
-      return {
-        ...base,
-        available: true,
-        centers: parseElements(elements, lat, lng),
-      };
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : "Overpass fetch failed";
+  const query = buildQuery(lat, lng);
+
+  /** One endpoint attempt. Rejects so Promise.any can pick the first success. */
+  const attempt = async (endpoint: string): Promise<EvacCentersResult> => {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        // Overpass etiquette: identify the application.
+        "user-agent": "AERIS-Chat/1.0 (disaster-response assistant; Philippines)",
+      },
+      body: `data=${encodeURIComponent(query)}`,
+      cache: "no-store",
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
+
+    const data = (await res.json()) as { elements?: OverpassElement[]; remark?: string };
+    // Overpass reports runtime errors (e.g. query timeouts) as HTTP 200 with a
+    // "remark". An errored, empty response must read as "unavailable" — NEVER
+    // as "there are no centers near you".
+    const remarkError = typeof data.remark === "string" && /error/i.test(data.remark);
+    const elements = data.elements ?? [];
+    if (remarkError && elements.length === 0) {
+      throw new Error(`Overpass remark: ${data.remark}`);
     }
+
+    return { ...base, available: true, centers: parseElements(elements, lat, lng) };
+  };
+
+  // RACE the mirrors instead of trying them serially. Individual Overpass
+  // endpoints swing between ~2.6s and >20s for the same query (measured
+  // 2026-08-04), so a serial walk regularly burned the whole budget on one
+  // slow mirror and returned "unavailable" while a sibling was answering fine.
+  // Racing makes wall time the FASTEST mirror rather than the sum.
+  //
+  // This costs one extra request per cache miss, and results are cached for 10
+  // minutes, so upstream load stays modest for a life-safety lookup.
+  try {
+    return await Promise.any(OVERPASS_ENDPOINTS.map(attempt));
+  } catch (err) {
+    // AggregateError when every mirror failed.
+    const errors =
+      err instanceof AggregateError
+        ? err.errors.map((e) => (e instanceof Error ? e.message : String(e)))
+        : [err instanceof Error ? err.message : "Overpass fetch failed"];
+    return { ...base, error: [...new Set(errors)].join("; ") };
   }
-  return { ...base, error: lastError };
 }
 
 export function findNearbyEvacCenters(lat: number, lng: number): Promise<EvacCentersResult> {

@@ -13,7 +13,10 @@ import {
   getHotlineLocale,
   resolveRegionForCoords,
 } from "../lib/emergency/hotlines";
-import { detectEmergencyInfoIntent } from "../lib/emergency/intent";
+import {
+  detectEmergencyInfoIntent,
+  detectEmergencyInfoIntentWithHistory,
+} from "../lib/emergency/intent";
 
 let failed = 0;
 let passed = 0;
@@ -118,6 +121,48 @@ check("dedupes node+way of the same site", parsed.filter((c) => c.name === "Bana
 check("sorted nearest-first (Banaba closest)", parsed[0]?.name === "Banaba Evacuation Center");
 check("distances computed", parsed.every((c) => Number.isFinite(c.distanceKm) && c.distanceKm > 0 && c.distanceKm < 20));
 check("address hint carried through", parsed.find((c) => c.name.includes("Bagong Silangan"))?.addressHint === "Quezon City");
+
+console.log("\n[ emergency-info follow-up inheritance (G-11) ]");
+// Without inheritance the hotline/evac block vanished on turn 2, so a user
+// answering their own evacuation question lost the data they asked about.
+const evacHistory = ["saan kami lilikas dito sa Marikina?"];
+check(
+  "short follow-up inherits evac intent",
+  detectEmergencyInfoIntentWithHistory("opo", evacHistory).evac,
+  JSON.stringify(detectEmergencyInfoIntentWithHistory("opo", evacHistory)),
+);
+check(
+  "short follow-up inherits hotline intent",
+  detectEmergencyInfoIntentWithHistory("yes please", ["what emergency numbers should I call?"])
+    .hotlines,
+);
+check(
+  "long topic change does not inherit",
+  !detectEmergencyInfoIntentWithHistory(
+    "anyway can you tell me a long story about the history of typhoon naming conventions in the region please",
+    evacHistory,
+  ).match,
+);
+check(
+  "follow-up without emergency history stays unmatched",
+  !detectEmergencyInfoIntentWithHistory("opo", ["will it rain today?"]).match,
+);
+
+console.log("\n[ Tagalog + assistance keyword coverage (G-10) ]");
+check("relief goods (EN)", detectEmergencyInfoIntent("where can I get relief goods?").hotlines);
+check(
+  "ayuda (FIL)",
+  detectEmergencyInfoIntent("saan ako pwedeng kumuha ng ayuda after ng baha?").hotlines,
+);
+check(
+  "missing person (FIL)",
+  detectEmergencyInfoIntent("nawawala ang tatay ko sa Marikina").hotlines,
+);
+check("financial assistance", detectEmergencyInfoIntent("paano mag-apply ng financial assistance?").hotlines);
+check(
+  "ordinary chat still does not match",
+  !detectEmergencyInfoIntent("salamat po, ang galing mo").match,
+);
 
 console.log(`\nResults: ${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

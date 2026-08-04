@@ -145,9 +145,58 @@ check(
   "incident intent still matches active flooding",
   detectIncidentIntent(incidentMessage).match,
 );
+// Design note: only an URGENT incident suppresses weather enrichment. A
+// non-urgent flood report keeps its forecast — whether more rain is coming is
+// exactly what that user needs in order to decide whether to leave. Hotlines
+// are injected separately either way (app/api/chat/route.ts).
 check(
-  "weather intent skips active incident phrasing",
-  !detectWeatherIntent(incidentMessage).match,
+  "non-urgent incident still gets weather data",
+  detectWeatherIntent(incidentMessage).match,
+  JSON.stringify(detectWeatherIntent(incidentMessage)),
+);
+check(
+  "urgent incident skips weather enrichment for speed",
+  !detectWeatherIntent("tulong! naipit kami sa bubong, tumataas ang tubig").match,
+);
+
+console.log("\n[ soft-urgency must not strip grounding (G-1) ]");
+
+// "help me" is politeness far more often than distress. It must not flip a
+// preparedness question into an SOS and strip its live data.
+const politeHelp = "Can you help me understand the typhoon signals for tomorrow?";
+check(
+  "polite 'can you help me' is not an incident",
+  !detectIncidentIntent(politeHelp).match,
+  JSON.stringify(detectIncidentIntent(politeHelp)),
+);
+check(
+  "polite 'can you help me' keeps weather intent",
+  detectWeatherIntent(politeHelp).match,
+  JSON.stringify(detectWeatherIntent(politeHelp)),
+);
+check(
+  "'help me understand' phrasing is not urgent",
+  !detectIncidentIntent("help me understand the rainfall forecast").urgent,
+);
+check(
+  "Tagalog polite request is not urgent",
+  !detectIncidentIntent("pwede mo ba akong tulungan intindihin ang bagyo?").urgent,
+);
+
+// The safety net: a real emergency phrased politely still fires on the hard
+// keyword, so leniency above never costs us a genuine SOS.
+check(
+  "polite phrasing with real distress is STILL urgent",
+  detectIncidentIntent("can you help me, I'm trapped on the roof").urgent,
+  JSON.stringify(detectIncidentIntent("can you help me, I'm trapped on the roof")),
+);
+check(
+  "bare 'tulong!' cry is still urgent",
+  detectIncidentIntent("tulong! binabaha kami").urgent,
+);
+check(
+  "'help us' in distress is still urgent",
+  detectIncidentIntent("help us the water is rising fast").urgent,
 );
 
 console.log(`\nResults: ${passed} passed, ${failed} failed\n`);

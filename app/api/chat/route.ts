@@ -1,4 +1,8 @@
 export const dynamic = 'force-dynamic'
+// Without this the platform default (well under our own 45s LLM budget) kills
+// the function first, so the client receives a non-JSON platform error page
+// instead of our handled timeout. Covers prefetch + LLM + persistence.
+export const maxDuration = 120
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
@@ -13,6 +17,7 @@ import {
 } from '@/lib/chat/location-payload'
 import {
   callNvidiaChatCompletion,
+  getDefaultLlmTimeoutMs,
   getNvidiaConfig,
   type AgentMessage,
   type ChatMessage as NvidiaChatMessage,
@@ -22,7 +27,9 @@ import { getClientIP } from '@/lib/utils/anonymous-session'
 import { detectWeatherIntentWithHistory } from '@/lib/weather/intent'
 import { detectPlaceMentionWithHistory } from '@/lib/weather/place-mention'
 import { detectIncidentIntent } from '@/lib/incidents/intent'
-import { detectEmergencyInfoIntent } from '@/lib/emergency/intent'
+import { detectEmergencyInfoIntentWithHistory } from '@/lib/emergency/intent'
+import { detectHazardIntent } from '@/lib/hazards/intent'
+import { fetchHazardNews, formatHazardNewsBlock } from '@/lib/news/hazard-context'
 import {
   formatHotlineContextBlock,
   getHotlineDirectory,
@@ -279,52 +286,101 @@ export async function POST(request: NextRequest) {
       resolvedLocation ??
       (weatherIntent.kind === 'typhoon' ? makePhDefaultLocation() : null)
 
+    // Emergency reference: verified hotlines whenever the user asks for numbers
+    // OR reports an active incident (SOS answers must ground their phone
+    // numbers); nearby evacuation centers when asked to evacuate. History-aware
+    // so a short follow-up ("opo", "which is nearest?") keeps the hotline/evac
+    // context of the turn it is answering.
+    const emergencyInfo = detectEmergencyInfoIntentWithHistory(
+      latestUserMessage,
+      priorUserMessages,
+    )
+    const incidentIntent = detectIncidentIntent(latestUserMessage)
+
+    // Hazard news is prefetched for two distinct reasons:
+    //
+    // 1. Earthquakes, volcanoes and landslides have no dedicated upstream feed,
+    //    so Philippine disaster reporting is our only live source for them.
+    //
+    // 2. GDACS MISSES WEAKER PAR SYSTEMS. Verified 2026-08-04: PAGASA-named
+    //    Tropical Depression "Luis" was causing landslides and class
+    //    suspensions across Luzon while the GDACS TC feed listed zero
+    //    Philippine storms. Tropical depressions cause much of the deadly
+    //    flooding here, so a typhoon answer grounded on GDACS alone can be a
+    //    false negative. Pulling news in alongside it catches PAGASA-named
+    //    systems that GDACS does not carry.
+    const hazardIntent = detectHazardIntent(latestUserMessage)
+    const typhoonQuestion =
+      weatherIntent.match && (weatherIntent.kind === 'typhoon' || weatherIntent.kind === 'both')
+
+    const wantsWeather = Boolean(
+      weatherIntent.match && weatherIntent.kind && weatherContextLocation,
+    )
+    const wantsEvac = Boolean(emergencyInfo.evac && resolvedLocation)
+    const wantsHazardNews = hazardIntent.match || typhoonQuestion
+
+    // Run every upstream prefetch CONCURRENTLY. These used to await in series,
+    // so a weather+evac+news turn paid GDACS (~5s) + Overpass + RSS (~2.5s)
+    // back to back — all of it before the LLM budget even starts. Wall time is
+    // now the slowest single fetch instead of their sum.
+    const [liveContext, evac, hazardNews] = await Promise.all([
+      wantsWeather
+        ? (() => {
+            // Widen the forecast window when the user asks about "this week".
+            const wantsWeek = /\b(week|linggo|days)\b/i.test(latestUserMessage)
+            const days = wantsWeek ? 7 : undefined
+
+            // If the user named a known PH city ("will it rain in Cebu?"), fetch
+            // the forecast for that place instead of their own coordinates.
+            // Short follow-ups ("yes") inherit the place from a recent turn.
+            const placeMention = detectPlaceMentionWithHistory(
+              latestUserMessage,
+              priorUserMessages,
+            )
+            const placeOverride: ForecastPlaceOverride | null = placeMention
+              ? {
+                  label: `${placeMention.name}, ${placeMention.region}`,
+                  lat: placeMention.lat,
+                  lng: placeMention.lng,
+                }
+              : null
+
+            return buildWeatherLiveContext(
+              weatherContextLocation as NonNullable<typeof weatherContextLocation>,
+              weatherIntent.kind as NonNullable<typeof weatherIntent.kind>,
+              days,
+              placeOverride,
+            )
+          })()
+        : Promise.resolve(null),
+      wantsEvac
+        ? findNearbyEvacCenters(
+            resolvedLocation!.position[1],
+            resolvedLocation!.position[0],
+          )
+        : Promise.resolve(null),
+      wantsHazardNews ? fetchHazardNews() : Promise.resolve(null),
+    ])
+
     let hasUsableWeatherData = false
-    if (weatherIntent.match && weatherIntent.kind && weatherContextLocation) {
-      // Widen the forecast window when the user asks about "this week".
-      const wantsWeek = /\b(week|linggo|days)\b/i.test(latestUserMessage)
-      const days = wantsWeek ? 7 : undefined
-
-      // If the user named a known PH city ("will it rain in Cebu?"), fetch
-      // the forecast for that place instead of their own coordinates.
-      // Short follow-ups ("yes") inherit the place from a recent turn.
-      const placeMention = detectPlaceMentionWithHistory(
-        latestUserMessage,
-        priorUserMessages,
-      )
-      const placeOverride: ForecastPlaceOverride | null = placeMention
-        ? {
-            label: `${placeMention.name}, ${placeMention.region}`,
-            lat: placeMention.lat,
-            lng: placeMention.lng,
-          }
-        : null
-
-      const liveContext = await buildWeatherLiveContext(
-        weatherContextLocation,
-        weatherIntent.kind,
-        days,
-        placeOverride,
-      )
+    if (liveContext) {
       hasUsableWeatherData = Boolean(
         liveContext.forecast?.available || liveContext.cyclones?.available,
       )
       contextBlocks.push(formatWeatherLiveContextBlock(liveContext))
     }
 
-    // Emergency reference prefetch: verified hotlines whenever the user asks
-    // for numbers OR reports an active incident (SOS answers must ground
-    // their phone numbers); nearby evacuation centers when asked to evacuate.
-    const emergencyInfo = detectEmergencyInfoIntent(latestUserMessage)
-    const incidentIntent = detectIncidentIntent(latestUserMessage)
     if (emergencyInfo.match || incidentIntent.match) {
       const [lng, lat] = resolvedLocation?.position ?? [undefined, undefined]
       contextBlocks.push(formatHotlineContextBlock(getHotlineDirectory(lat, lng)))
+    }
 
-      if (emergencyInfo.evac && resolvedLocation) {
-        const evac = await findNearbyEvacCenters(lat as number, lng as number)
-        contextBlocks.push(`EVAC_CENTERS (JSON):\n${JSON.stringify(evac, null, 2)}`)
-      }
+    if (evac) {
+      contextBlocks.push(`EVAC_CENTERS (JSON):\n${JSON.stringify(evac, null, 2)}`)
+    }
+
+    if (hazardNews) {
+      contextBlocks.push(formatHazardNewsBlock(hazardNews))
     }
 
     const systemMessages: NvidiaChatMessage[] = []
@@ -341,12 +397,9 @@ export async function POST(request: NextRequest) {
 
     const finalMessages: AgentMessage[] = [...systemMessages, ...sanitizedMessages]
 
+    // Shared with lib/nvidia-llm so the deadline that fires is the one we report.
     const controller = new AbortController()
-    const timeoutMs = Number(process.env.LLM_TIMEOUT_MS ?? '45000')
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 45000,
-    )
+    const timeoutId = setTimeout(() => controller.abort(), getDefaultLlmTimeoutMs())
 
     try {
       let aiMessage: string

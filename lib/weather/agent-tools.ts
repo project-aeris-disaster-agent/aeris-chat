@@ -2,6 +2,7 @@ import type { NvidiaToolDef } from "@/lib/nvidia-llm";
 import type { ChatLocationPayload } from "@/lib/chat/location-payload";
 import { findNearbyEvacCenters } from "@/lib/emergency/evac-centers";
 import { getHotlineDirectory } from "@/lib/emergency/hotlines";
+import { fetchHazardNews } from "@/lib/news/hazard-context";
 import { cachedFetchActiveCyclones, cachedFetchWeatherForecast } from "@/lib/weather/cache";
 import { geocodePlace } from "@/lib/weather/geocode";
 import { getWeatherPrefetchDays } from "@/lib/weather/open-meteo";
@@ -45,21 +46,15 @@ export const GET_ACTIVE_TYPHOONS_TOOL: NvidiaToolDef = {
   },
 };
 
-export const LOOKUP_TYPHOON_SIGNAL_TOOL: NvidiaToolDef = {
+export const GET_HAZARD_NEWS_TOOL: NvidiaToolDef = {
   type: "function",
   function: {
-    name: "lookup_typhoon_signal",
+    name: "get_hazard_news",
     description:
-      "Look up the current PAGASA tropical cyclone wind signal for ONE specific named Philippine province or city (e.g. 'is Marikina under signal no. 2?'). Requires AERIS Dashboard when configured. Do NOT call this for general/national questions ('is there a storm in PAR?', 'any typhoon right now?') — use get_active_typhoons for those instead. 'PAR' (Philippine Area of Responsibility) is not a valid area name here.",
+      "Fetch recent Philippine disaster news reporting (earthquakes, volcanic activity, tsunami, landslides, advisories). Use this for hazards with no dedicated feed — especially earthquake and volcano questions. Returns reporting, NOT an official bulletin: always attribute the outlet and point the user to PHIVOLCS or PAGASA for authoritative status.",
     parameters: {
       type: "object",
-      properties: {
-        area: {
-          type: "string",
-          description: "A specific area name, e.g. 'Marikina' or 'Cebu province'. Never 'PAR' or 'Philippines'.",
-        },
-      },
-      required: ["area"],
+      properties: {},
       additionalProperties: false,
     },
   },
@@ -119,7 +114,7 @@ export const GET_EMERGENCY_HOTLINES_TOOL: NvidiaToolDef = {
 export const WEATHER_AGENT_TOOLS: NvidiaToolDef[] = [
   GET_WEATHER_FORECAST_TOOL,
   GET_ACTIVE_TYPHOONS_TOOL,
-  LOOKUP_TYPHOON_SIGNAL_TOOL,
+  GET_HAZARD_NEWS_TOOL,
   GEOCODE_PLACE_TOOL,
   FIND_EVAC_CENTERS_TOOL,
   GET_EMERGENCY_HOTLINES_TOOL,
@@ -128,35 +123,6 @@ export const WEATHER_AGENT_TOOLS: NvidiaToolDef[] = [
 export type WeatherToolContext = {
   userLocation: ChatLocationPayload | null;
 };
-
-async function lookupTyphoonSignal(area: string): Promise<unknown> {
-  if (!area) return { error: "area is required" };
-  const baseUrl = process.env.AERIS_DASHBOARD_API_BASE_URL?.replace(/\/$/, "");
-  if (!baseUrl) {
-    return {
-      area,
-      available: false,
-      note: "Dashboard API not configured; cannot fetch live PAGASA signal.",
-    };
-  }
-  try {
-    const res = await fetch(`${baseUrl}/api/jtwc?area=${encodeURIComponent(area)}`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) {
-      return { area, available: false, status: res.status };
-    }
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    return { area, available: true, data };
-  } catch (err) {
-    return {
-      area,
-      available: false,
-      error: err instanceof Error ? err.message : "lookup failed",
-    };
-  }
-}
 
 export async function runWeatherTool(
   name: string,
@@ -193,10 +159,8 @@ export async function runWeatherTool(
         typhoonImpact: assessTyphoonImpact(cyclones.cyclones, lat, lng),
       };
     }
-    case "lookup_typhoon_signal": {
-      const area = typeof args.area === "string" ? args.area.trim() : "";
-      return lookupTyphoonSignal(area);
-    }
+    case "get_hazard_news":
+      return fetchHazardNews();
     case "geocode_place": {
       const name = typeof args.name === "string" ? args.name.trim() : "";
       if (!name) return { error: "name is required" };

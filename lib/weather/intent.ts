@@ -74,9 +74,16 @@ export function detectWeatherIntent(rawMessage: string): WeatherIntentMatch {
   const message = normalizeMessage(rawMessage);
   const signals: string[] = [];
 
+  // Only a genuine emergency suppresses weather enrichment. On an urgent SOS
+  // every second counts, so we skip the ~8s upstream prefetch and let the
+  // safety-escalation persona answer immediately.
+  //
+  // A non-urgent incident mention ("Marikina is flooding", "may baha dito")
+  // still gets its forecast: knowing whether more rain is coming is exactly
+  // what that user needs, and the hotline block is injected either way.
   const incident = detectIncidentIntent(rawMessage);
-  if (incident.match) {
-    return { match: false, kind: null, signals: ["skipped:incident-intent"] };
+  if (incident.match && incident.urgent) {
+    return { match: false, kind: null, signals: ["skipped:urgent-incident"] };
   }
 
   const typhoonHit = findKeyword(message, TYPHOON_KEYWORDS);
@@ -125,9 +132,9 @@ export function detectWeatherIntentWithHistory(
   const direct = detectWeatherIntent(rawMessage);
   if (direct.match) return direct;
 
-  // Direct signals like "skipped:incident-intent" must stand: an active
-  // incident report is never a weather follow-up.
-  if (direct.signals.includes("skipped:incident-intent")) return direct;
+  // An urgent SOS must stand: it is never a weather follow-up, and inheriting
+  // stale weather intent would delay the escalation response.
+  if (direct.signals.includes("skipped:urgent-incident")) return direct;
 
   if (rawMessage.trim().length > FOLLOW_UP_MAX_CHARS) return direct;
 

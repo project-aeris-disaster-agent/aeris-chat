@@ -51,8 +51,28 @@ const INCIDENT_VERBS = [
   "guho",
   "guhuin",
   "nawalan ng kuryente",
+  // Tagalog counterparts of English verbs already listed above, which
+  // previously matched only in English.
+  "nawawala",
+  "nawawalang",
+  "sarado ang kalsada",
+  "sarado ang daan",
+  "hindi madaanan",
+  "lindol",
+  "bulkan",
+  "pagputok",
+  "tsunami",
+  "nagbaha",
+  "bumabaha",
+  "napinsala",
+  "nawasak",
 ];
 
+/**
+ * Unambiguous distress. Any of these makes a message urgent regardless of
+ * phrasing — a real emergency almost always contains one of them, which is
+ * what lets the softer list below be treated more leniently.
+ */
 const URGENT_KEYWORDS = [
   "sos",
   "rescue",
@@ -74,15 +94,36 @@ const URGENT_KEYWORDS = [
   "trapped in",
   "collapsed",
   "fire spreading",
-  "help us",
-  "help me",
-  "tulong",
   "saklolo",
-  "tulungan",
   "nalulunod",
   "namamatay",
   "naipit",
 ];
+
+/**
+ * Ambiguous urgency: these mean real distress in "tulong, tumataas ang tubig"
+ * but are ordinary politeness in "can you help me understand the signals?".
+ * They count as urgent EXCEPT in a clear assistance-request construction.
+ *
+ * This is safe because the hard list above is unaffected: a genuine emergency
+ * phrased politely ("can you help me, I'm trapped") still fires on "trapped".
+ */
+const SOFT_URGENT_KEYWORDS = ["help us", "help me", "tulong", "tulungan"];
+
+/**
+ * Matches polite requests for assistance — "can you help me…", "pwede mo ba
+ * akong tulungan…", "help me understand…". Used only to demote SOFT_URGENT
+ * hits, never to demote a hard distress keyword.
+ */
+const ASSISTANCE_REQUEST_PATTERNS = [
+  /\b(?:can|could|would|will)\s+(?:you|u)\b[^?]{0,40}\b(?:help|tulong|tulungan)\b/i,
+  /\b(?:pwede|puwede|maaari|paki\w*)\b[^?]{0,40}\b(?:help|tulong|tulungan)\b/i,
+  /\bhelp\s+(?:me|us)\s+(?:understand|understanding|know|learn|find|check|explain|figure|decide|prepare|plan|choose|with)\b/i,
+];
+
+function isAssistanceRequest(rawMessage: string): boolean {
+  return ASSISTANCE_REQUEST_PATTERNS.some((re) => re.test(rawMessage));
+}
 
 export type IntentMatch = {
   /** True if the message likely describes an ongoing incident. */
@@ -124,7 +165,15 @@ export function detectIncidentIntent(rawMessage: string): IntentMatch {
 
   const isQuestion = /\?\s*$/.test(rawMessage.trim()) || /^(what|how|why|when|where|kailan|paano|bakit)\b/i.test(rawMessage.trim());
 
-  const urgentHit = URGENT_KEYWORDS.find((kw) => message.includes(` ${kw}`) || message.includes(`${kw} `));
+  let urgentHit = URGENT_KEYWORDS.find((kw) => message.includes(` ${kw}`) || message.includes(`${kw} `));
+
+  // Soft urgency only counts when the message isn't a polite request for help.
+  // Checked second so a hard keyword always wins and can never be demoted.
+  if (!urgentHit && !isAssistanceRequest(rawMessage)) {
+    urgentHit = SOFT_URGENT_KEYWORDS.find(
+      (kw) => message.includes(` ${kw}`) || message.includes(`${kw} `),
+    );
+  }
   if (urgentHit) signals.push(`urgent:${urgentHit}`);
 
   const match = firstPerson || Boolean(urgentHit) || !isQuestion;

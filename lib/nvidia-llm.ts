@@ -45,9 +45,16 @@ export function serializeAgentMessages(messages: AgentMessage[]): Record<string,
 const DEFAULT_MODEL = "meta/llama-3.1-70b-instruct";
 const DEFAULT_MAX_TOKENS = 2048;
 
+/**
+ * Single source of truth for the LLM timeout. The chat route previously
+ * defaulted to 45000 while this defaulted to 55000, so the reported duration
+ * never matched the deadline that actually fired.
+ */
+export const DEFAULT_LLM_TIMEOUT_MS = 45_000;
+
 export function getDefaultLlmTimeoutMs(): number {
-  const ms = Number(process.env.LLM_TIMEOUT_MS ?? "55000");
-  return Number.isFinite(ms) && ms > 0 ? ms : 55_000;
+  const ms = Number(process.env.LLM_TIMEOUT_MS ?? String(DEFAULT_LLM_TIMEOUT_MS));
+  return Number.isFinite(ms) && ms > 0 ? ms : DEFAULT_LLM_TIMEOUT_MS;
 }
 
 export function getNvidiaConfig() {
@@ -166,7 +173,12 @@ export async function callNvidiaChatCompletion(
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`NVIDIA LLM request timed out after ${timeoutMs}ms`);
+      // Preserve `name === "AbortError"` so callers can still detect a timeout.
+      // Rethrowing a plain Error here made the route's 504 branch unreachable
+      // and misrouted the client's error copy to "under maintenance".
+      const timeout = new Error(`NVIDIA LLM request timed out after ${timeoutMs}ms`);
+      timeout.name = "AbortError";
+      throw timeout;
     }
     throw error;
   } finally {
@@ -284,7 +296,12 @@ async function callNvidiaAgentTurn(
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`NVIDIA LLM request timed out after ${timeoutMs}ms`);
+      // Preserve `name === "AbortError"` so callers can still detect a timeout.
+      // Rethrowing a plain Error here made the route's 504 branch unreachable
+      // and misrouted the client's error copy to "under maintenance".
+      const timeout = new Error(`NVIDIA LLM request timed out after ${timeoutMs}ms`);
+      timeout.name = "AbortError";
+      throw timeout;
     }
     throw error;
   } finally {
