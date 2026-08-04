@@ -57,6 +57,20 @@ import {
   outputFallbackMessage,
 } from '@/lib/guardrails/moderation'
 
+/**
+ * True when the model returned nothing but its required closing disclaimer
+ * (and no substantive answer). Strips the disclaimer sentences and checks
+ * whether anything meaningful is left.
+ */
+function isDisclaimerOnly(message: string): boolean {
+  const stripped = message
+    .replace(/not an official[^.\n]*\.?/gi, '')
+    .replace(/follow pagasa[^.\n]*\.?/gi, '')
+    .replace(/follow phivolcs[^.\n]*\.?/gi, '')
+    .replace(/[\s*_#>-]/g, '')
+  return stripped.length < 15
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -424,6 +438,25 @@ export async function POST(request: NextRequest) {
         aiMessage = await callNvidiaChatCompletion(finalMessages as NvidiaChatMessage[], {
           signal: controller.signal,
         })
+      }
+
+      // The persona requires closing with the safety disclaimer, and the model
+      // occasionally emits ONLY that — a technically-compliant but empty answer
+      // (observed ~8% of turns). Retry once without the disclaimer requirement
+      // rather than shipping a reply with no content in it.
+      if (isDisclaimerOnly(aiMessage)) {
+        console.warn(`[chat] disclaimer-only response for session ${sessionId}; retrying`)
+        aiMessage = await callNvidiaChatCompletion(
+          [
+            ...(finalMessages as NvidiaChatMessage[]),
+            {
+              role: 'system',
+              content:
+                'Your previous reply contained only the closing disclaimer and no actual answer. Answer the question directly and substantively first. Do not reply with the disclaimer alone.',
+            },
+          ],
+          { signal: controller.signal },
+        )
       }
 
       clearTimeout(timeoutId)
